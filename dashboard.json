@@ -1,0 +1,520 @@
+{
+  "metadata": {
+    "configurationVersions": [7],
+    "clusterVersion": "1.303"
+  },
+  "dashboardMetadata": {
+    "name": "MSSQL Latch & Blocking Root Cause Analysis",
+    "shared": true,
+    "owner": "custom:mssql.latch.diagnostics",
+    "tags": ["MSSQL", "Latch", "Blocking", "Diagnostics"],
+    "preset": false,
+    "popularity": 1,
+    "hasConsistentColors": false
+  },
+  "tiles": [
+    {
+      "name": "Latch Waits by Class",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": {
+        "top": 0,
+        "left": 0,
+        "width": 760,
+        "height": 380
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "customName": "Latch Waits by Class",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.latch.wait_time_ms",
+          "splitBy": ["latch_class"],
+          "sortBy": "DESC",
+          "sortByDimension": "",
+          "filterBy": {
+            "nestedFilters": [],
+            "criteria": []
+          },
+          "limit": 15,
+          "rate": "NONE",
+          "enabled": true,
+          "generatedMetricSelector": null
+        }
+      ],
+      "visualConfig": {
+        "type": "TOP_LIST",
+        "global": { "hideLegend": false },
+        "rules": [
+          {
+            "matcher": "A:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "MilliSecond"
+          }
+        ],
+        "axes": {
+          "xAxis": { "visible": true },
+          "yAxes": []
+        },
+        "heatmapSettings": { "yAxis": "VALUE" },
+        "thresholds": [
+          {
+            "axisTarget": "LEFT",
+            "rules": [
+              { "value": 0, "color": "#7dc540" },
+              { "value": 1000, "color": "#f5d30f" },
+              { "value": 10000, "color": "#dc172a" }
+            ],
+            "queryId": "",
+            "visible": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "Latch Waiting Requests Trend",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": {
+        "top": 0,
+        "left": 760,
+        "width": 760,
+        "height": 380
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "customName": "Latch Waiting Requests Trend",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.latch.waiting_requests",
+          "splitBy": ["latch_class"],
+          "sortBy": "DESC",
+          "sortByDimension": "",
+          "filterBy": {
+            "nestedFilters": [],
+            "criteria": []
+          },
+          "limit": 10,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "GRAPH_CHART",
+        "global": { "hideLegend": false },
+        "rules": [
+          {
+            "matcher": "A:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "Count"
+          }
+        ],
+        "axes": {
+          "xAxis": { "visible": true },
+          "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }]
+        }
+      }
+    },
+    {
+      "name": "Active Blocking Chains",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": {
+        "top": 380,
+        "left": 0,
+        "width": 1520,
+        "height": 380
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "customName": "Active Blocking Chains",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.blocking.active_chains",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": {
+            "nestedFilters": [],
+            "criteria": []
+          },
+          "limit": 100,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "GRAPH_CHART",
+        "global": { "hideLegend": false },
+        "rules": [
+          {
+            "matcher": "A:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "Count"
+          }
+        ],
+        "axes": {
+          "xAxis": { "visible": true },
+          "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }]
+        },
+        "thresholds": [
+          {
+            "axisTarget": "LEFT",
+            "rules": [
+              { "value": 0, "color": "#7dc540" },
+              { "value": 1, "color": "#f5d30f" },
+              { "value": 5, "color": "#dc172a" }
+            ],
+            "queryId": "",
+            "visible": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "Blocking Chain Details",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": {
+        "top": 760,
+        "left": 0,
+        "width": 1520,
+        "height": 380
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "customName": "Blocking Chain Details",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.blocking.wait_time_ms",
+          "splitBy": [
+            "blocked_spid",
+            "blocker_spid",
+            "wait_type",
+            "database_name",
+            "blocked_query",
+            "blocker_query"
+          ],
+          "sortBy": "DESC",
+          "filterBy": {
+            "nestedFilters": [],
+            "criteria": []
+          },
+          "limit": 50,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TABLE",
+        "global": { "hideLegend": false },
+        "rules": [
+          {
+            "matcher": "A:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "MilliSecond"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Wait Type Breakdown",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": {
+        "top": 1140,
+        "left": 0,
+        "width": 760,
+        "height": 380
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "customName": "Wait Type Breakdown",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.wait.wait_time_ms",
+          "splitBy": ["wait_type"],
+          "sortBy": "DESC",
+          "filterBy": {
+            "nestedFilters": [],
+            "criteria": []
+          },
+          "limit": 20,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "PIE_CHART",
+        "global": { "hideLegend": false },
+        "rules": [
+          {
+            "matcher": "A:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "MilliSecond"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Signal Wait vs Total Wait",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": {
+        "top": 1140,
+        "left": 760,
+        "width": 760,
+        "height": 380
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "customName": "Signal Wait vs Total Wait",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.wait.wait_time_ms",
+          "splitBy": ["wait_type"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 15,
+          "rate": "NONE",
+          "enabled": true
+        },
+        {
+          "id": "B",
+          "metric": "custom.mssql.wait.signal_wait_time_ms",
+          "splitBy": ["wait_type"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 15,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "GRAPH_CHART",
+        "global": { "hideLegend": false },
+        "rules": [
+          {
+            "matcher": "A:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "MilliSecond"
+          },
+          {
+            "matcher": "B:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "MilliSecond"
+          }
+        ],
+        "axes": {
+          "xAxis": { "visible": true },
+          "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }]
+        }
+      }
+    },
+    {
+      "name": "Proc Statement Waits",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": {
+        "top": 1520,
+        "left": 0,
+        "width": 1520,
+        "height": 380
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "customName": "Proc Statement Waits — Top 20 by Total Wait Time",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.proc_wait.total_wait_time_ms",
+          "splitBy": ["proc_name", "query_sql_text", "wait_category_desc"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 20,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TABLE",
+        "global": { "hideLegend": false },
+        "rules": [
+          {
+            "matcher": "A:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "MilliSecond"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Auto-Growth Event Timeline",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": {
+        "top": 1900,
+        "left": 0,
+        "width": 760,
+        "height": 380
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "customName": "Auto-Growth Event Timeline",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.autogrowth.event_count",
+          "splitBy": ["event_name", "database_name"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 50,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "GRAPH_CHART",
+        "global": { "hideLegend": false },
+        "rules": [
+          {
+            "matcher": "A:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "Count"
+          }
+        ],
+        "axes": {
+          "xAxis": { "visible": true },
+          "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }]
+        }
+      }
+    },
+    {
+      "name": "Auto-Growth vs Latch Wait Correlation",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": {
+        "top": 1900,
+        "left": 760,
+        "width": 760,
+        "height": 380
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "customName": "Auto-Growth vs Latch Wait Correlation",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.latch.wait_time_ms",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 100,
+          "rate": "NONE",
+          "enabled": true
+        },
+        {
+          "id": "B",
+          "metric": "custom.mssql.autogrowth.event_count",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 100,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "GRAPH_CHART",
+        "global": { "hideLegend": false },
+        "rules": [
+          {
+            "matcher": "A:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "MilliSecond"
+          },
+          {
+            "matcher": "B:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "Count"
+          }
+        ],
+        "axes": {
+          "xAxis": { "visible": true },
+          "yAxes": [
+            { "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT", "label": "Latch Wait (ms)" },
+            { "visible": true, "min": "AUTO", "max": "AUTO", "position": "RIGHT", "label": "Growth Events" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Deadlock Events",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": {
+        "top": 2280,
+        "left": 0,
+        "width": 1520,
+        "height": 380
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "customName": "Deadlock Events (Last 24h)",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.deadlock.event_count",
+          "splitBy": ["deadlock_time"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 50,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TABLE",
+        "global": { "hideLegend": false },
+        "rules": [
+          {
+            "matcher": "A:",
+            "properties": { "color": "DEFAULT" },
+            "seriesOverrides": [],
+            "unitTransform": "Count"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Dashboard Header",
+      "tileType": "MARKDOWN",
+      "configured": true,
+      "bounds": {
+        "top": -76,
+        "left": 0,
+        "width": 1520,
+        "height": 76
+      },
+      "tileFilter": {},
+      "isAutoRefreshDisabled": false,
+      "markdown": "## MSSQL Latch & Blocking Root Cause Analysis\n\nPowered by `custom:mssql.latch.diagnostics` extension. Covers latch contention, blocking chains, wait stats, procedure-level waits, auto-growth detection, and deadlock capture."
+    }
+  ]
+}

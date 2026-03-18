@@ -1,0 +1,473 @@
+name: "custom:mssql.latch.diagnostics"
+version: 1.0.0
+minDynatraceVersion: "1.303"
+author:
+  name: "Custom Extension"
+
+# ---------------------------------------------------------------------------
+# Metric Definitions
+# ---------------------------------------------------------------------------
+metrics:
+  # --- Latch Analysis ---
+  - key: custom.mssql.latch.wait_time_ms
+    metadata:
+      displayName: "Latch Wait Time"
+      description: "Cumulative latch wait time by latch class from sys.dm_os_latch_stats"
+      unit: MilliSecond
+
+  - key: custom.mssql.latch.waiting_requests
+    metadata:
+      displayName: "Latch Waiting Requests"
+      description: "Number of waiting requests by latch class"
+      unit: Count
+
+  - key: custom.mssql.latch.max_wait_time_ms
+    metadata:
+      displayName: "Latch Max Wait Time"
+      description: "Maximum single latch wait time by latch class"
+      unit: MilliSecond
+
+  # --- Blocking Chains ---
+  - key: custom.mssql.blocking.wait_time_ms
+    metadata:
+      displayName: "Blocking Wait Time"
+      description: "Wait time of blocked session in the blocking chain"
+      unit: MilliSecond
+
+  - key: custom.mssql.blocking.active_chains
+    metadata:
+      displayName: "Active Blocking Chains"
+      description: "Total number of currently active blocking chains"
+      unit: Count
+
+  # --- Wait Stats ---
+  - key: custom.mssql.wait.wait_time_ms
+    metadata:
+      displayName: "OS Wait Time"
+      description: "Cumulative wait time for latch-related OS wait types"
+      unit: MilliSecond
+
+  - key: custom.mssql.wait.waiting_tasks
+    metadata:
+      displayName: "Waiting Tasks Count"
+      description: "Number of tasks waiting on latch-related wait types"
+      unit: Count
+
+  - key: custom.mssql.wait.max_wait_time_ms
+    metadata:
+      displayName: "OS Max Wait Time"
+      description: "Maximum single wait time for latch-related OS wait types"
+      unit: MilliSecond
+
+  - key: custom.mssql.wait.signal_wait_time_ms
+    metadata:
+      displayName: "Signal Wait Time"
+      description: "Time between signaling and running for latch-related waits"
+      unit: MilliSecond
+
+  # --- Procedure Wait Breakdown (Query Store) ---
+  - key: custom.mssql.proc_wait.total_wait_time_ms
+    metadata:
+      displayName: "Proc Statement Total Wait Time"
+      description: "Total wait time for a statement inside a procedure (from Query Store)"
+      unit: MilliSecond
+
+  - key: custom.mssql.proc_wait.avg_wait_time_ms
+    metadata:
+      displayName: "Proc Statement Avg Wait Time"
+      description: "Average wait time per execution for a statement"
+      unit: MilliSecond
+
+  - key: custom.mssql.proc_wait.max_wait_time_ms
+    metadata:
+      displayName: "Proc Statement Max Wait Time"
+      description: "Maximum wait time for a statement inside a procedure"
+      unit: MilliSecond
+
+  - key: custom.mssql.proc_wait.count_executions
+    metadata:
+      displayName: "Proc Statement Execution Count"
+      description: "Number of executions of the statement in the interval"
+      unit: Count
+
+  - key: custom.mssql.proc_wait.avg_duration
+    metadata:
+      displayName: "Proc Statement Avg Duration"
+      description: "Average duration per execution (microseconds)"
+      unit: MicroSecond
+
+  - key: custom.mssql.proc_wait.avg_cpu_time
+    metadata:
+      displayName: "Proc Statement Avg CPU Time"
+      description: "Average CPU time per execution (microseconds)"
+      unit: MicroSecond
+
+  - key: custom.mssql.proc_wait.avg_logical_io_reads
+    metadata:
+      displayName: "Proc Statement Avg Logical IO Reads"
+      description: "Average logical IO reads per execution"
+      unit: Count
+
+  # --- Auto-Growth Events ---
+  - key: custom.mssql.autogrowth.duration_us
+    metadata:
+      displayName: "Auto-Growth Duration"
+      description: "Duration of the auto-growth event from the default trace"
+      unit: MicroSecond
+
+  - key: custom.mssql.autogrowth.growth_pages
+    metadata:
+      displayName: "Auto-Growth Size (Pages)"
+      description: "Size of the auto-growth in 8 KB pages"
+      unit: Count
+
+  - key: custom.mssql.autogrowth.event_count
+    metadata:
+      displayName: "Auto-Growth Event Count"
+      description: "Number of auto-growth events detected"
+      unit: Count
+
+  # --- Deadlock Graphs ---
+  - key: custom.mssql.deadlock.event_count
+    metadata:
+      displayName: "Deadlock Event Count"
+      description: "Number of deadlock events captured from system_health Extended Events"
+      unit: Count
+
+# ---------------------------------------------------------------------------
+# SQL Server Data Source — Query Groups
+# ---------------------------------------------------------------------------
+sqlMssql:
+
+  # =========================================================================
+  # Group 1: Latch Waits by Class
+  # =========================================================================
+  - group: latch_analysis
+    featureSet: latch_analysis
+    subgroups:
+      - subgroup: latch_stats
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              latch_class,
+              waiting_requests_count,
+              wait_time_ms,
+              max_wait_time_ms
+          FROM sys.dm_os_latch_stats
+          WHERE waiting_requests_count > 0
+          ORDER BY wait_time_ms DESC
+        metrics:
+          - key: custom.mssql.latch.wait_time_ms
+            value: col:wait_time_ms
+            type: gauge
+          - key: custom.mssql.latch.waiting_requests
+            value: col:waiting_requests_count
+            type: gauge
+          - key: custom.mssql.latch.max_wait_time_ms
+            value: col:max_wait_time_ms
+            type: gauge
+        dimensions:
+          - key: latch_class
+            value: col:latch_class
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Group 2: Blocking Chains with Query Text
+  # =========================================================================
+  - group: blocking_chains
+    featureSet: blocking_chains
+    subgroups:
+
+      # --- Detailed blocking chain rows (log-event style via metrics + dimensions) ---
+      - subgroup: blocking_chain_details
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              r.session_id AS blocked_spid,
+              r.blocking_session_id AS blocker_spid,
+              r.wait_type,
+              r.wait_time AS wait_time_ms,
+              r.wait_resource,
+              DB_NAME(r.database_id) AS database_name,
+              SUBSTRING(t.text, (r.statement_start_offset/2)+1,
+                  ((CASE r.statement_end_offset
+                      WHEN -1 THEN DATALENGTH(t.text)
+                      ELSE r.statement_end_offset
+                  END - r.statement_start_offset)/2)+1) AS blocked_query,
+              bt.text AS blocker_query,
+              s.login_name AS blocked_login,
+              s.host_name AS blocked_hostname,
+              s.program_name AS blocked_program
+          FROM sys.dm_exec_requests r
+          INNER JOIN sys.dm_exec_sessions s ON r.session_id = s.session_id
+          CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+          OUTER APPLY (
+              SELECT sql_handle FROM sys.dm_exec_requests
+              WHERE session_id = r.blocking_session_id
+          ) br
+          OUTER APPLY sys.dm_exec_sql_text(br.sql_handle) bt
+          WHERE r.blocking_session_id > 0
+        metrics:
+          - key: custom.mssql.blocking.wait_time_ms
+            value: col:wait_time_ms
+            type: gauge
+        dimensions:
+          - key: blocked_spid
+            value: col:blocked_spid
+          - key: blocker_spid
+            value: col:blocker_spid
+          - key: wait_type
+            value: col:wait_type
+          - key: wait_resource
+            value: col:wait_resource
+          - key: database_name
+            value: col:database_name
+          - key: blocked_query
+            value: col:blocked_query
+          - key: blocker_query
+            value: col:blocker_query
+          - key: blocked_login
+            value: col:blocked_login
+          - key: blocked_hostname
+            value: col:blocked_hostname
+          - key: blocked_program
+            value: col:blocked_program
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+      # --- Aggregate blocking chain count ---
+      - subgroup: blocking_chain_count
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              COUNT(*) AS active_chains_count
+          FROM sys.dm_exec_requests
+          WHERE blocking_session_id > 0
+        metrics:
+          - key: custom.mssql.blocking.active_chains
+            value: col:active_chains_count
+            type: gauge
+        dimensions:
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Group 3: Wait Stats by Wait Type (latch-related)
+  # =========================================================================
+  - group: wait_stats
+    featureSet: wait_stats
+    subgroups:
+      - subgroup: os_wait_stats
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              wait_type,
+              waiting_tasks_count,
+              wait_time_ms,
+              max_wait_time_ms,
+              signal_wait_time_ms
+          FROM sys.dm_os_wait_stats
+          WHERE wait_type IN (
+              'PAGELATCH_EX', 'PAGELATCH_SH', 'PAGELATCH_UP',
+              'PAGEIOLATCH_EX', 'PAGEIOLATCH_SH', 'PAGEIOLATCH_UP',
+              'LATCH_EX', 'LATCH_SH', 'LATCH_UP', 'LATCH_DT',
+              'IO_COMPLETION', 'WRITELOG', 'LOGBUFFER',
+              'RESOURCE_SEMAPHORE', 'RESOURCE_SEMAPHORE_QUERY_COMPILE'
+          )
+          AND waiting_tasks_count > 0
+          ORDER BY wait_time_ms DESC
+        metrics:
+          - key: custom.mssql.wait.wait_time_ms
+            value: col:wait_time_ms
+            type: gauge
+          - key: custom.mssql.wait.waiting_tasks
+            value: col:waiting_tasks_count
+            type: gauge
+          - key: custom.mssql.wait.max_wait_time_ms
+            value: col:max_wait_time_ms
+            type: gauge
+          - key: custom.mssql.wait.signal_wait_time_ms
+            value: col:signal_wait_time_ms
+            type: gauge
+        dimensions:
+          - key: wait_type
+            value: col:wait_type
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Group 4: Per-Statement Wait Breakdown (Query Store)
+  # =========================================================================
+  - group: proc_wait_breakdown
+    featureSet: proc_wait_breakdown
+    interval:
+      minutes: 5
+    subgroups:
+      - subgroup: query_store_waits
+        query: |
+          SELECT TOP 50
+              @@SERVERNAME AS sql_server_instance,
+              qt.query_sql_text,
+              OBJECT_NAME(q.object_id) AS proc_name,
+              ws.wait_category_desc,
+              ws.total_query_wait_time_ms,
+              ws.avg_query_wait_time_ms,
+              ws.max_query_wait_time_ms,
+              rs.count_executions,
+              rs.avg_duration,
+              rs.avg_cpu_time,
+              rs.avg_logical_io_reads
+          FROM sys.query_store_wait_stats ws
+          JOIN sys.query_store_runtime_stats rs
+              ON ws.runtime_stats_interval_id = rs.runtime_stats_interval_id
+              AND ws.plan_id = rs.plan_id
+          JOIN sys.query_store_plan p ON ws.plan_id = p.plan_id
+          JOIN sys.query_store_query q ON p.query_id = q.query_id
+          JOIN sys.query_store_query_text qt ON q.query_text_id = qt.query_text_id
+          WHERE ws.wait_category_desc IN ('Latch', 'Lock', 'Buffer Latch', 'Buffer IO')
+              AND rs.last_execution_time > DATEADD(MINUTE, -10, GETUTCDATE())
+          ORDER BY ws.total_query_wait_time_ms DESC
+        metrics:
+          - key: custom.mssql.proc_wait.total_wait_time_ms
+            value: col:total_query_wait_time_ms
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_wait_time_ms
+            value: col:avg_query_wait_time_ms
+            type: gauge
+          - key: custom.mssql.proc_wait.max_wait_time_ms
+            value: col:max_query_wait_time_ms
+            type: gauge
+          - key: custom.mssql.proc_wait.count_executions
+            value: col:count_executions
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_duration
+            value: col:avg_duration
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_cpu_time
+            value: col:avg_cpu_time
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_logical_io_reads
+            value: col:avg_logical_io_reads
+            type: gauge
+        dimensions:
+          - key: query_sql_text
+            value: col:query_sql_text
+          - key: proc_name
+            value: col:proc_name
+          - key: wait_category_desc
+            value: col:wait_category_desc
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Group 5: Auto-Growth Events (via Default Trace)
+  # =========================================================================
+  # NOTE: The original spec used xp_readerrorlog with temp tables, which is
+  # incompatible with EF2 single-statement SQL. This uses the default trace
+  # instead. For the OneAgent log-monitoring alternative, see README.md.
+  - group: autogrowth_events
+    featureSet: autogrowth_events
+    interval:
+      minutes: 5
+    subgroups:
+      - subgroup: default_trace_autogrowth
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              te.name AS event_name,
+              t.DatabaseName AS database_name,
+              t.FileName AS file_name,
+              t.Duration AS duration_us,
+              t.IntegerData AS growth_pages,
+              1 AS event_count
+          FROM sys.fn_trace_gettable(
+              (SELECT path FROM sys.traces WHERE id = 1), DEFAULT
+          ) t
+          JOIN sys.trace_events te ON t.EventClass = te.trace_event_id
+          WHERE te.name IN (
+              'Data File Auto Grow',
+              'Log File Auto Grow',
+              'Data File Auto Shrink',
+              'Log File Auto Shrink'
+          )
+          AND t.StartTime > DATEADD(MINUTE, -10, GETDATE())
+          ORDER BY t.StartTime DESC
+        metrics:
+          - key: custom.mssql.autogrowth.duration_us
+            value: col:duration_us
+            type: gauge
+          - key: custom.mssql.autogrowth.growth_pages
+            value: col:growth_pages
+            type: gauge
+          - key: custom.mssql.autogrowth.event_count
+            value: col:event_count
+            type: gauge
+        dimensions:
+          - key: event_name
+            value: col:event_name
+          - key: database_name
+            value: col:database_name
+          - key: file_name
+            value: col:file_name
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Group 6: Deadlock Graphs from Extended Events
+  # =========================================================================
+  - group: deadlock_graphs
+    featureSet: deadlock_graphs
+    interval:
+      minutes: 5
+    subgroups:
+      - subgroup: system_health_deadlocks
+        query: |
+          SELECT TOP 10
+              @@SERVERNAME AS sql_server_instance,
+              xed.value('@timestamp', 'datetime2') AS deadlock_time,
+              SUBSTRING(
+                  xed.value('(data[@name="xml_report"]/value)[1]', 'nvarchar(max)'),
+                  1, 4000
+              ) AS deadlock_graph,
+              1 AS event_count
+          FROM (
+              SELECT CAST(target_data AS XML) AS target
+              FROM sys.dm_xe_session_targets st
+              JOIN sys.dm_xe_sessions s ON s.address = st.event_session_address
+              WHERE s.name = 'system_health'
+                AND st.target_name = 'ring_buffer'
+          ) AS data
+          CROSS APPLY target.nodes('//event[@name="xml_deadlock_report"]') AS x(xed)
+          WHERE xed.value('@timestamp', 'datetime2') > DATEADD(MINUTE, -10, GETUTCDATE())
+          ORDER BY deadlock_time DESC
+        metrics:
+          - key: custom.mssql.deadlock.event_count
+            value: col:event_count
+            type: gauge
+        dimensions:
+          - key: deadlock_time
+            value: col:deadlock_time
+          - key: deadlock_graph
+            value: col:deadlock_graph
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+# ---------------------------------------------------------------------------
+# Topology — Associate metrics with SQL Server instance entities
+# ---------------------------------------------------------------------------
+topology:
+  types:
+    - name: sql:sql_server_instance
+      displayName: "SQL Server Instance"
+      rules:
+        - idPattern: "mssql_latch_diagnostics_{sql_server_instance}"
+          sources:
+            - sourceType: Metrics
+              condition: "$prefix(custom.mssql)"
+          requiredDimensions:
+            - key: sql_server_instance
+          attributes:
+            - key: sql_server_instance
+              displayName: "Instance Name"
+              pattern: "{sql_server_instance}"
