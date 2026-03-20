@@ -1245,6 +1245,13 @@ sqlMssql:
               'blocked process threshold (s)',
               'query governor cost limit'
           )
+
+          UNION ALL
+
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              'ProductMajorVersion' AS config_name,
+              CAST(SERVERPROPERTY('ProductMajorVersion') AS BIGINT) AS config_value
         metrics:
           - key: custom.mssql.config.value
             value: col:config_value
@@ -1252,6 +1259,37 @@ sqlMssql:
         dimensions:
           - key: config_name
             value: col:config_name
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+      # --- Server version details (string-valued, ingested as log events) ---
+      - subgroup: server_version
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              CAST(SERVERPROPERTY('ProductVersion') AS VARCHAR(50)) AS product_version,
+              CAST(SERVERPROPERTY('ProductMajorVersion') AS VARCHAR(10)) AS major_version,
+              CAST(SERVERPROPERTY('Edition') AS VARCHAR(100)) AS edition,
+              CASE
+                  WHEN CAST(SERVERPROPERTY('ProductMajorVersion') AS INT) >= 15
+                  THEN ISNULL(
+                      (SELECT CAST(value AS VARCHAR(10)) FROM sys.database_scoped_configurations
+                       WHERE name = 'LAST_QUERY_PLAN_STATS'), '0')
+                  ELSE 'N/A'
+              END AS last_query_plan_stats_enabled
+        metrics:
+          - key: custom.mssql.config.version_check
+            value: col:major_version
+            type: gauge
+        dimensions:
+          - key: product_version
+            value: col:product_version
+          - key: major_version
+            value: col:major_version
+          - key: edition
+            value: col:edition
+          - key: last_query_plan_stats_enabled
+            value: col:last_query_plan_stats_enabled
           - key: sql_server_instance
             value: col:sql_server_instance
 

@@ -47,7 +47,7 @@ This solution provides automated root cause analysis for stored procedure perfor
 |-------|-----------|---------|
 | **1** | EF2 Extension (this repo) | Always-on DMV metrics: latch stats, wait analysis, memory grants, TempDB usage, I/O latency, index operational stats, proc wait breakdown, plan regression, blocking chains |
 | **2** | XEvent Sessions (`xevent_sessions.sql`) | Event-driven capture: blocked process reports, deadlock graphs, auto-growth events, sort/hash spill warnings, missing statistics, recompilation, slow statement completion |
-| **3** | Deep Capture (workflow-triggered) | On-demand `DT_SP_DeepCapture` XEvent session activated only during incidents for per-latch detail and actual execution plans |
+| **3** | Deep Capture (version-aware) | **SQL 2019+:** Zero-overhead `sys.dm_exec_query_plan_stats` DMV for actual execution plans (no XEvent needed). **Pre-2019:** On-demand `DT_SP_DeepCapture` XEvent session fallback for per-latch detail and execution plans |
 | **4** | Health Check (EF2 Extension, hourly) | Periodic structural checks: missing indexes, index fragmentation, stale statistics, server configuration compliance |
 | **5** | Davis CoPilot RCA (`workflow_rca.json`) | Automated root cause analysis: gathers evidence from all layers, feeds to CoPilot with decision tree, posts narrative to Problem card |
 
@@ -76,6 +76,56 @@ This solution provides automated root cause analysis for stored procedure perfor
 | **Query Store** | Must be enabled on each database for `proc_wait_breakdown` and `plan_regression_detection` |
 | **Default Trace** | Must be running (enabled by default) for `autogrowth_events` |
 | **system_health XE** | Must be running (enabled by default) for `deadlock_graphs` |
+
+---
+
+## Lightweight Query Profiling by SQL Server Version
+
+Layer 3 uses a version-aware strategy for retrieving actual execution plans. The mechanism depends on the SQL Server version:
+
+| Infrastructure | SQL Server Version | Mechanism | Overhead | Used By |
+|---|---|---|---|---|
+| Standard (Legacy) | Pre-2014 SP2 | `query_post_execution_showplan` | Extremely high (75%+) | **NEVER USE** |
+| Lightweight v1 | 2014 SP2 / 2016 | Trace Flag 7412 + `query_thread_profile` | Low (~2%) | Layer 3 fallback |
+| Lightweight v2 | 2016 SP1 / 2017 | Auto with `query_thread_profile` | Very low (<2%) | Layer 3 fallback |
+| Lightweight v3 | 2019+ | Default `query_plan_profile` | Minimal | Automatic |
+| LAST_QUERY_PLAN_STATS | 2019+ | `dm_exec_query_plan_stats` DMV | **Zero** (post-execution) | Layer 3 primary |
+
+> **CRITICAL WARNING:** Never use `query_post_execution_showplan` — it imposes 75%+ overhead and will destabilize production servers. This solution exclusively uses lightweight profiling or DMV-based plan retrieval.
+
+---
+
+## Cardinality Management (OpenPipeline)
+
+To control DPS consumption, OpenPipeline normalization rules reduce high-cardinality dimensions before they hit Grail.
+
+### Bucketing Rules
+
+**Rule 1: Bucket `wait_type` into 7 categories**
+
+| Input `wait_type` Values | Output `wait_category` |
+|---|---|
+| PAGELATCH_EX, PAGELATCH_SH, PAGELATCH_UP | Buffer Latch |
+| PAGEIOLATCH_EX, PAGEIOLATCH_SH, PAGEIOLATCH_UP | IO Latch |
+| LATCH_EX, LATCH_SH, LATCH_UP, LATCH_DT | Non-Buffer Latch |
+| LCK_M_X, LCK_M_S, LCK_M_U, LCK_M_IX, LCK_M_IS | Lock |
+| RESOURCE_SEMAPHORE, RESOURCE_SEMAPHORE_QUERY_COMPILE | Memory |
+| CXPACKET, CXCONSUMER, SOS_SCHEDULER_YIELD | CPU/Parallelism |
+| IO_COMPLETION, WRITELOG, LOGBUFFER, ASYNC_IO_COMPLETION | IO |
+
+**Rule 2: Cap `latch_class` to top 20** — Keep only the top 20 latch classes by `wait_time_ms` per polling interval. Aggregate remaining into an "Other" bucket.
+
+**Rule 3: Cap `query_hash` dimension** — For `proc_wait_breakdown` and `plan_regression` log events, retain only top 200 queries by total duration. Drop the rest to prevent cardinality explosion in Query Store-sourced data.
+
+### Cardinality Budget
+
+| Dimension | Raw Cardinality | Cap Strategy | Target Cardinality |
+|---|---|---|---|
+| `wait_type` | 800+ unique values | OpenPipeline bucket into 7 categories | 7 |
+| `latch_class` | 60+ unique values | Top-N filter in SQL query (WHERE clause) | 20 |
+| `database_name` | Varies | Limit to monitored databases in endpoint config | Customer-specific |
+| `query_hash` | Potentially thousands | Top 200 by duration in SQL query | 200 |
+| `index_name` | Potentially thousands | Filter by latch/lock wait count > 0 | ~50-100 |
 
 ---
 
@@ -268,6 +318,22 @@ Under DPS licensing, consumption is measured in **GiB of data ingested** across 
 
 ---
 
+## EEC Performance Profile Recommendation
+
+For production deployments monitoring multiple SQL Server instances, choose an appropriate Extension Execution Controller (EEC) performance profile:
+
+| Profile | CPU | RAM | Suitable For |
+|---|---|---|---|
+| Default | 5% | 500 MB | 1–5 SQL Server instances |
+| High | 15% | 1000 MB | 5–20 SQL Server instances |
+| **Dedicated** | **30%** | **1500 MB** | **20+ instances** or all 12 feature sets enabled |
+
+**Configuration path:** Settings → Preferences → Extension Execution Controller → Performance profile
+
+If diagnostic queries time out during peak periods (symptom: gaps in metric data), switch to the Dedicated profile and ensure the ActiveGate has sufficient resources (minimum 4 vCPU, 8 GB RAM recommended for dedicated).
+
+---
+
 ## Troubleshooting
 
 ### Extension not collecting data
@@ -314,3 +380,22 @@ Under DPS licensing, consumption is measured in **GiB of data ingested** across 
 6. **Index fragmentation overhead:** The `index_fragmentation` feature set uses `LIMITED` mode to minimize impact, but can still be resource-intensive on very large databases. It runs hourly by default.
 
 7. **XEvent file target location:** The `DT_SP_Diagnostics` and `DT_SP_DeepCapture` XEvent sessions write .xel files to the SQL Server's default LOG directory. Ensure sufficient disk space (max 500 MB for Layer 2, 400 MB for Layer 3).
+
+---
+
+## Future-Proofing Notes
+
+> These are roadmap considerations, not current deliverables.
+
+### SQL Server 2025 (when GA)
+
+- **Time-Bound Extended Events:** SQL 2025 allows the engine to auto-stop XEvent sessions after a specified duration, independent of external signals. When available, integrate this as a safety valve for the pre-2019 XEvent fallback path — even if the Workflow fails, the session self-terminates.
+- **Intelligent Query Processing (IQP):** SQL 2025 includes AI-driven cardinality estimates. Monitor new event types to detect when the engine's own intelligence causes unexpected plan changes.
+
+### MCP-Based Diagnostic Agent (future vision)
+
+The reasoning layer (Layer 5) can be enhanced by implementing a dedicated Database Diagnostic Agent using the Model Context Protocol (MCP). This would allow Dynatrace Assist to recursively query Grail, parse SQL text for anti-patterns, and do cross-version correlation autonomously. This is a significant engineering effort and is not part of the current scope — position as Phase 4 / future roadmap.
+
+### `OPTIMIZED_SP_EXECUTESQL` (SQL 2025, niche)
+
+For environments using dynamic SQL heavily, monitor the impact of this new database-scoped configuration. Not a core diagnostic capability but a potential config audit addition to Feature Set 12.

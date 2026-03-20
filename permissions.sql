@@ -99,6 +99,25 @@ GO
 
 
 -- =============================================================================
+-- 3b. Version-Aware Layer 3 Prerequisites (SQL Server 2019+)
+-- =============================================================================
+-- For SQL Server 2019+, Layer 3 uses sys.dm_exec_query_plan_stats DMV
+-- instead of the DT_SP_DeepCapture XEvent session. This requires:
+--   1. VIEW SERVER STATE (already granted above — no additional permission)
+--   2. LAST_QUERY_PLAN_STATS database-scoped configuration enabled (DBA one-time)
+--
+-- For SQL Server pre-2019, ALTER ANY EVENT SESSION (above) is still required.
+-- =============================================================================
+
+-- >>> Enable LAST_QUERY_PLAN_STATS on each target database (SQL 2019+ only) <<<
+-- >>> Replace 'YourDatabase' with your actual database name <<<
+-- USE [YourDatabase];
+-- GO
+-- ALTER DATABASE SCOPED CONFIGURATION SET LAST_QUERY_PLAN_STATS = ON;
+-- GO
+
+
+-- =============================================================================
 -- 4. Verification
 -- =============================================================================
 -- Run these queries to verify the permissions are correctly configured.

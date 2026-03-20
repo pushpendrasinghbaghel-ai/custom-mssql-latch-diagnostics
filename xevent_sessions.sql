@@ -177,10 +177,18 @@ GO
 
 
 -- =============================================================================
--- SESSION 2: DT_SP_DeepCapture (On-Demand, Layer 3)
+-- SESSION 2: DT_SP_DeepCapture (On-Demand, Layer 3 — Pre-2019 Fallback)
 -- =============================================================================
 -- This session is created but NOT started. It is activated by a Dynatrace
 -- Workflow only during active incidents when Davis detects SP degradation.
+--
+-- VERSION-AWARE LAYER 3 STRATEGY:
+--   - SQL Server 2019+: Layer 3 uses sys.dm_exec_query_plan_stats DMV instead.
+--     This session is NOT started for SQL 2019+. Zero overhead, no ALTER needed.
+--   - SQL Server 2016 SP1 / 2017: Uses lightweight query_thread_profile (~2%).
+--     This session IS started as a fallback.
+--   - SQL Server pre-2016: Uses standard XEvent with tight time bound (higher
+--     risk — document clearly). This session IS started as a fallback.
 --
 -- It captures heavier, more detailed data:
 --   - Per-latch detail with blocking information (latch_suspend_end)
