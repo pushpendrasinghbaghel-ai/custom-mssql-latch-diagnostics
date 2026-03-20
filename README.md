@@ -1,17 +1,67 @@
-# MSSQL Latch & Blocking Deep Diagnostics — Dynatrace Extension 2.0
+# SP Deep Diagnostics — Comprehensive Stored Procedure Root Cause Analysis
 
-> **Extension name:** `custom:mssql.latch.diagnostics`
-> **Version:** 1.0.0
-> **Framework:** EF2 (Extension Framework 2.0) — `sqlMssql` data source
+> **Extension name:** `custom:mssql.sp.diagnostics`  
+> **Version:** 2.0.0  
+> **Framework:** EF2 (Extension Framework 2.0) — `sqlMssql` data source  
 > **Runs on:** ActiveGate (remote monitoring)
 
 ---
 
 ## Overview
 
-This custom extension fills critical observability gaps left by the official Dynatrace SQL Server extension (`com.dynatrace.extension.sql-server`). It provides deep latch contention analysis, blocking chain diagnostics with full query text, per-statement wait breakdowns inside stored procedures, auto-growth event detection, and deadlock graph capture.
+This solution provides automated root cause analysis for stored procedure performance issues in Microsoft SQL Server. When Davis detects an SP degradation, the system automatically investigates 30+ potential root causes across 5 categories and delivers a plain-English root cause narrative with actionable recommendations — directly on the Problem card.
 
-**It does NOT duplicate** any DMV, metric, or feature set already covered by the official extension.
+**It does NOT duplicate** any DMV, metric, or feature set already covered by the official `com.dynatrace.extension.sql-server` extension.
+
+---
+
+## Architecture: 5 Layers
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  SP DEEP DIAGNOSTICS                        │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │ LAYER 5: AUTOMATED RCA NARRATION                    │    │
+│  │ Davis CoPilot reasons over evidence from all layers  │    │
+│  │ Posts root cause + recommendations to Problem card   │    │
+│  └──────────────────────┬──────────────────────────────┘    │
+│                         │ consumes all layers               │
+│  ┌──────────┬───────────┴────┬──────────────┐               │
+│  │          │                │              │               │
+│  ▼          ▼                ▼              ▼               │
+│ LAYER 1   LAYER 2        LAYER 3       LAYER 4             │
+│ Always-On  Always-On      On-Demand     Periodic            │
+│ Metrics    Events         Deep Capture  Health Check         │
+│ (EF2 Ext)  (XEvents)     (Workflow)    (EF2/hourly)         │
+│                                                             │
+│ Overhead:   Overhead:     Overhead:     Overhead:            │
+│ Low         Low           Medium        Low                  │
+│ Runs: 24/7  Runs: 24/7   Runs: During  Runs: Hourly         │
+│                           incidents                          │
+│                           only                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| Layer | Component | Purpose |
+|-------|-----------|---------|
+| **1** | EF2 Extension (this repo) | Always-on DMV metrics: latch stats, wait analysis, memory grants, TempDB usage, I/O latency, index operational stats, proc wait breakdown, plan regression, blocking chains |
+| **2** | XEvent Sessions (`xevent_sessions.sql`) | Event-driven capture: blocked process reports, deadlock graphs, auto-growth events, sort/hash spill warnings, missing statistics, recompilation, slow statement completion |
+| **3** | Deep Capture (workflow-triggered) | On-demand `DT_SP_DeepCapture` XEvent session activated only during incidents for per-latch detail and actual execution plans |
+| **4** | Health Check (EF2 Extension, hourly) | Periodic structural checks: missing indexes, index fragmentation, stale statistics, server configuration compliance |
+| **5** | Davis CoPilot RCA (`workflow_rca.json`) | Automated root cause analysis: gathers evidence from all layers, feeds to CoPilot with decision tree, posts narrative to Problem card |
+
+---
+
+## Root Cause Categories Covered
+
+| # | Category | Issues Detected |
+|---|----------|----------------|
+| 1 | **Query Execution** | Parameter sniffing, plan regression, stale statistics, implicit conversions, excessive recompilation |
+| 2 | **Contention** | Lock blocking, latch contention, deadlocks, spinlock contention, TempDB contention |
+| 3 | **Resource Pressure** | Memory grant starvation, TempDB spills, I/O bottleneck, CPU saturation, log file bottleneck, auto-growth stalls |
+| 4 | **Schema/Design** | Missing indexes, index fragmentation, oversized temp tables |
+| 5 | **Configuration** | MAXDOP misconfiguration, cost threshold too low, max memory misconfigured, TempDB files misconfigured |
 
 ---
 
@@ -20,236 +70,217 @@ This custom extension fills critical observability gaps left by the official Dyn
 | Requirement | Details |
 |---|---|
 | **Dynatrace** | Version ≥ 1.303 |
-| **ActiveGate** | Environment or cluster ActiveGate with the Remote Monitoring module enabled |
-| **SQL Server** | 2016+ (2017+ required for Query Store Wait Stats — feature set `proc_wait_breakdown`) |
-| **SQL Permissions** | `VIEW SERVER STATE` (for server-level DMVs) + `VIEW DATABASE STATE` (for Query Store views) |
-| **Query Store** | Must be enabled on each database you want `proc_wait_breakdown` data for |
+| **ActiveGate** | Environment or cluster ActiveGate with Remote Monitoring module enabled |
+| **SQL Server** | 2016+ (2017+ required for Query Store Wait Stats — feature sets `proc_wait_breakdown`, `plan_regression_detection`) |
+| **SQL Permissions** | `VIEW SERVER STATE` + `VIEW DATABASE STATE` (see `permissions.sql`) |
+| **Query Store** | Must be enabled on each database for `proc_wait_breakdown` and `plan_regression_detection` |
 | **Default Trace** | Must be running (enabled by default) for `autogrowth_events` |
 | **system_health XE** | Must be running (enabled by default) for `deadlock_graphs` |
 
-### Creating the monitoring user
+---
 
-```sql
--- On the target SQL Server instance:
-CREATE LOGIN [dynatrace_monitor] WITH PASSWORD = '<strong_password>';
-CREATE USER  [dynatrace_monitor] FOR LOGIN [dynatrace_monitor];
+## Repository Structure
 
-GRANT VIEW SERVER STATE TO [dynatrace_monitor];
-
--- For each database where you want Query Store data:
-USE [YourDatabase];
-GRANT VIEW DATABASE STATE TO [dynatrace_monitor];
+```
+custom-mssql-latch-diagnostics/
+├── extension/
+│   └── extension.yaml          # EF2 extension definition (15 feature sets)
+├── dashboard.json              # Dynatrace dashboard (6 sections)
+├── workflow_rca.json           # RCA workflow with Davis CoPilot integration
+├── xevent_sessions.sql         # XEvent session deployment script (Layer 2 & 3)
+├── permissions.sql             # Minimum SQL Server permissions script
+├── sample_dql_queries.md       # 16 ready-to-use DQL queries for Notebooks
+└── README.md                   # This file
 ```
 
 ---
 
-## Extension Package Structure
+## Installation
 
-```
-custom_mssql.latch.diagnostics-1.0.0.zip
-└── extension/
-    └── extension.yaml
+### Step 1: Configure SQL Server Permissions
+
+Run `permissions.sql` on each monitored SQL Server instance. Replace `<strong_password>` and `YourDatabase` with actual values.
+
+```sql
+-- Run on the target SQL Server
+-- See permissions.sql for the full script
+CREATE LOGIN [dynatrace_monitor] WITH PASSWORD = '<strong_password>';
+GRANT VIEW SERVER STATE TO [dynatrace_monitor];
+
+USE [YourDatabase];
+CREATE USER [dynatrace_monitor] FOR LOGIN [dynatrace_monitor];
+GRANT VIEW DATABASE STATE TO [dynatrace_monitor];
 ```
 
-### How to Package
+### Step 2: Deploy XEvent Sessions (Layer 2 & 3)
+
+Run `xevent_sessions.sql` on each monitored SQL Server instance. This creates:
+- `DT_SP_Diagnostics` — always-on session (starts automatically)
+- `DT_SP_DeepCapture` — on-demand session (stays stopped until Workflow triggers it)
+
+```sql
+-- Run the full xevent_sessions.sql script
+-- Verify sessions are created:
+SELECT name, startup_state FROM sys.server_event_sessions
+WHERE name IN ('DT_SP_Diagnostics', 'DT_SP_DeepCapture');
+```
+
+### Step 3: Package and Upload the Extension
 
 ```powershell
 # From the project root:
-Compress-Archive -Path extension -DestinationPath custom_mssql.latch.diagnostics-1.0.0.zip
+Compress-Archive -Path extension -DestinationPath custom_mssql.sp.diagnostics-2.0.0.zip
 ```
 
-Or using the Dynatrace Extension CLI (`dt-cli`):
+Or using `dt-cli`:
 
 ```bash
-dt extension assemble --source extension --output custom_mssql.latch.diagnostics-1.0.0.zip
+dt extension assemble --source extension --output custom_mssql.sp.diagnostics-2.0.0.zip
 ```
 
-### How to Upload and Activate
+Upload via **Dynatrace Hub → Upload custom extension** or the API:
 
-1. **Upload** — Navigate to **Dynatrace Hub → Upload custom extension** and upload the ZIP file. Alternatively, use the Extensions API v2:
-   ```
-   POST /api/v2/extensions
-   Content-Type: application/octet-stream
-   Body: <ZIP file>
-   ```
+```
+POST /api/v2/extensions
+Content-Type: application/octet-stream
+Body: <ZIP file>
+```
 
-2. **Configure monitoring** — After upload, go to **Settings → Monitoring → Monitored technologies → Custom extensions**, find `custom:mssql.latch.diagnostics`, and add a monitoring configuration:
+### Step 4: Configure Monitoring
+
+1. Go to **Settings → Monitoring → Monitored technologies → Custom extensions**
+2. Find `custom:mssql.sp.diagnostics`
+3. Add a monitoring configuration:
    - Specify the ActiveGate group
    - Enter SQL Server connection details (host, port, authentication)
-   - Select the target database (important for `proc_wait_breakdown`)
+   - Select the target database (important for Query Store features)
+4. Enable the feature sets you need (see below)
 
-3. **Enable feature sets** — In the monitoring configuration, enable or disable individual feature sets based on your needs (see below).
+### Step 5: Import Dashboard
+
+Import `dashboard.json` via **Dashboards → Import dashboard** or the API:
+
+```
+POST /api/config/v1/dashboards
+Content-Type: application/json
+Body: <dashboard.json contents>
+```
+
+### Step 6: Import RCA Workflow
+
+Import `workflow_rca.json` via **Workflows → Upload** or the API. Configure:
+- Adjust the trigger filter to match your database service entity tags
+- Test with a synthetic problem to verify the flow
 
 ---
 
 ## Feature Sets
 
-Each feature set can be independently enabled or disabled. Start with the sets most relevant to your issue and expand from there.
+Each feature set can be independently enabled or disabled. Start with the sets most relevant to your issue.
 
-| Feature Set | Description | Polling Interval | SQL Server Version |
-|---|---|---|---|
-| `latch_analysis` | Latch wait time, request count, and max wait broken down by latch class (e.g., `BUFFER`, `FGCB_ADD_REMOVE`) from `sys.dm_os_latch_stats` | 1 minute | 2016+ |
-| `blocking_chains` | Active blocking chains with blocker/blocked session IDs, query text for both sides, wait type, database, login, host, and program | 1 minute | 2016+ |
-| `wait_stats` | OS-level wait statistics for latch-related wait types (`PAGELATCH_*`, `PAGEIOLATCH_*`, `LATCH_*`, `IO_COMPLETION`, `WRITELOG`, etc.) from `sys.dm_os_wait_stats` | 1 minute | 2016+ |
-| `proc_wait_breakdown` | Per-statement wait analysis inside stored procedures: which statement caused the latch wait, with execution counts, duration, CPU, and IO stats from Query Store | 5 minutes | **2017+** |
-| `autogrowth_events` | Data file and log file auto-grow/shrink events captured from the SQL Server default trace | 5 minutes | 2016+ |
-| `deadlock_graphs` | Full deadlock XML graphs from the `system_health` Extended Events ring buffer, with timestamp filtering to avoid re-ingestion | 5 minutes | 2016+ |
+### Layer 1 — Always-On Metrics (Low Overhead)
 
-### Recommended Starting Configuration
+| Feature Set | Description | Interval | SQL Server | DMV Source |
+|---|---|---|---|---|
+| `latch_analysis` | Latch wait time/count/max by latch class | 1 min | 2016+ | `sys.dm_os_latch_stats` |
+| `wait_analysis` | OS wait stats for latch, I/O, memory, CPU, lock wait types | 1 min | 2016+ | `sys.dm_os_wait_stats` |
+| `memory_grants` | Memory grant pressure: waiting count, deficit, per-session detail | 1 min | 2016+ | `sys.dm_exec_query_memory_grants` |
+| `tempdb_usage` | TempDB usage: total and top session consumption | 1 min | 2016+ | `sys.dm_db_task_space_usage` |
+| `file_io_detail` | Per-file I/O latency: read/write latency, stall time | 1 min | 2016+ | `sys.dm_io_virtual_file_stats` |
+| `index_operational_stats` | Per-index page latch/IO latch/row lock/page lock contention | 5 min | 2016+ | `sys.dm_db_index_operational_stats` |
+| `proc_wait_breakdown` | Per-statement wait analysis inside SPs from Query Store | 5 min | **2017+** | `sys.query_store_wait_stats` |
+| `plan_regression_detection` | Multi-plan queries with high variance ratio (parameter sniffing) | 5 min | **2017+** | `sys.query_store_plan` |
+| `blocking_chains` | Active blocking chains with blocker/blocked query text | 1 min | 2016+ | `sys.dm_exec_requests` |
+| `autogrowth_events` | Data/log file auto-grow/shrink events from default trace | 5 min | 2016+ | `sys.fn_trace_gettable` |
+| `deadlock_graphs` | Deadlock XML graphs from system_health XE ring buffer | 5 min | 2016+ | `sys.dm_xe_session_targets` |
 
-- **Latch investigation:** Enable `latch_analysis` + `wait_stats` + `autogrowth_events`
-- **Blocking investigation:** Enable `blocking_chains` + `deadlock_graphs`
-- **Stored procedure tuning:** Enable `proc_wait_breakdown`
-- **Full diagnostics:** Enable all feature sets
+### Layer 4 — Periodic Health Check (Low Overhead)
 
----
+| Feature Set | Description | Interval | SQL Server | DMV Source |
+|---|---|---|---|---|
+| `missing_indexes` | Top 25 missing indexes by improvement score | 1 hour | 2016+ | `sys.dm_db_missing_index_details` |
+| `index_fragmentation` | Indexes with > 10% fragmentation and > 1000 pages (LIMITED mode) | 1 hour | 2016+ | `sys.dm_db_index_physical_stats` |
+| `stale_statistics` | Statistics with high modification count relative to row count | 1 hour | 2016+ | `sys.dm_db_stats_properties` |
+| `server_config_check` | Key server configs (MAXDOP, cost threshold, memory, TempDB files) | 1 hour | 2016+ | `sys.configurations` |
 
-## Metrics Reference
+### Recommended Starting Configurations
 
-### Latch Analysis (`latch_analysis`)
-
-| Metric Key | Display Name | Unit | Dimension |
-|---|---|---|---|
-| `custom.mssql.latch.wait_time_ms` | Latch Wait Time | MilliSecond | `latch_class` |
-| `custom.mssql.latch.waiting_requests` | Latch Waiting Requests | Count | `latch_class` |
-| `custom.mssql.latch.max_wait_time_ms` | Latch Max Wait Time | MilliSecond | `latch_class` |
-
-### Blocking Chains (`blocking_chains`)
-
-| Metric Key | Display Name | Unit | Dimensions |
-|---|---|---|---|
-| `custom.mssql.blocking.wait_time_ms` | Blocking Wait Time | MilliSecond | `blocked_spid`, `blocker_spid`, `wait_type`, `wait_resource`, `database_name`, `blocked_query`, `blocker_query`, `blocked_login`, `blocked_hostname`, `blocked_program` |
-| `custom.mssql.blocking.active_chains` | Active Blocking Chains | Count | *(none — aggregate count)* |
-
-### Wait Stats (`wait_stats`)
-
-| Metric Key | Display Name | Unit | Dimension |
-|---|---|---|---|
-| `custom.mssql.wait.wait_time_ms` | OS Wait Time | MilliSecond | `wait_type` |
-| `custom.mssql.wait.waiting_tasks` | Waiting Tasks Count | Count | `wait_type` |
-| `custom.mssql.wait.max_wait_time_ms` | OS Max Wait Time | MilliSecond | `wait_type` |
-| `custom.mssql.wait.signal_wait_time_ms` | Signal Wait Time | MilliSecond | `wait_type` |
-
-### Procedure Wait Breakdown (`proc_wait_breakdown`)
-
-| Metric Key | Display Name | Unit | Dimensions |
-|---|---|---|---|
-| `custom.mssql.proc_wait.total_wait_time_ms` | Proc Statement Total Wait Time | MilliSecond | `query_sql_text`, `proc_name`, `wait_category_desc` |
-| `custom.mssql.proc_wait.avg_wait_time_ms` | Proc Statement Avg Wait Time | MilliSecond | *(same)* |
-| `custom.mssql.proc_wait.max_wait_time_ms` | Proc Statement Max Wait Time | MilliSecond | *(same)* |
-| `custom.mssql.proc_wait.count_executions` | Proc Statement Execution Count | Count | *(same)* |
-| `custom.mssql.proc_wait.avg_duration` | Proc Statement Avg Duration | MicroSecond | *(same)* |
-| `custom.mssql.proc_wait.avg_cpu_time` | Proc Statement Avg CPU Time | MicroSecond | *(same)* |
-| `custom.mssql.proc_wait.avg_logical_io_reads` | Proc Statement Avg Logical IO Reads | Count | *(same)* |
-
-### Auto-Growth Events (`autogrowth_events`)
-
-| Metric Key | Display Name | Unit | Dimensions |
-|---|---|---|---|
-| `custom.mssql.autogrowth.duration_us` | Auto-Growth Duration | MicroSecond | `event_name`, `database_name`, `file_name` |
-| `custom.mssql.autogrowth.growth_pages` | Auto-Growth Size (Pages) | Count | *(same)* |
-| `custom.mssql.autogrowth.event_count` | Auto-Growth Event Count | Count | *(same)* |
-
-### Deadlock Graphs (`deadlock_graphs`)
-
-| Metric Key | Display Name | Unit | Dimensions |
-|---|---|---|---|
-| `custom.mssql.deadlock.event_count` | Deadlock Event Count | Count | `deadlock_time`, `deadlock_graph` |
+| Scenario | Enable These Feature Sets |
+|---|---|
+| **Latch investigation** | `latch_analysis` + `wait_analysis` + `autogrowth_events` + `index_operational_stats` |
+| **Blocking investigation** | `blocking_chains` + `wait_analysis` + `deadlock_graphs` |
+| **SP performance triage** | `proc_wait_breakdown` + `plan_regression_detection` + `memory_grants` + `tempdb_usage` |
+| **Full RCA (all layers)** | All feature sets enabled |
 
 ---
 
 ## DDU Consumption Estimates
 
-Davis Data Units (DDU) consumption depends on metric cardinality. Below are **per-instance, per-hour** estimates.
+| Feature Set | Metrics/Poll | Dimensions | Est. DDU/Hour |
+|---|---|---|---|
+| `latch_analysis` | 3 × ~20 rows | 2 | ~0.04 |
+| `wait_analysis` | 4 × ~20 rows | 2 | ~0.05 |
+| `memory_grants` | 3 aggregate + 4 × 20 detail | 3 | ~0.06 |
+| `tempdb_usage` | 2 aggregate | 1 | ~0.01 |
+| `file_io_detail` | 5 × ~15 rows | 4 | ~0.05 |
+| `index_operational_stats` | 10 × ~50 rows (5 min) | 5 | ~0.10 |
+| `proc_wait_breakdown` | 10 × ~100 rows (5 min) | 6 | ~0.15 |
+| `plan_regression_detection` | 5 × ~10 rows + 1 agg (5 min) | 4 | ~0.03 |
+| `blocking_chains` | 1 × variable + 1 agg | 11 | ~0.03 |
+| `autogrowth_events` | 3 × variable (5 min) | 4 | ~0.01 |
+| `deadlock_graphs` | 1 × variable (5 min) | 3 | ~0.01 |
+| `missing_indexes` | 3 × 25 rows (hourly) | 6 | ~0.01 |
+| `index_fragmentation` | 2 × variable (hourly) | 5 | ~0.01 |
+| `stale_statistics` | 3 × variable (hourly) | 5 | ~0.01 |
+| `server_config_check` | 1 × 7 + 2 (hourly) | 2 | ~0.01 |
+| **Total (all enabled)** | | | **~0.58/hr ≈ 14 DDU/day** |
 
-| Feature Set | Estimated DDUs/hr | Key Cardinality Driver |
-|---|---|---|
-| `latch_analysis` | 0.1 – 0.5 | Number of distinct `latch_class` values (~30 classes with activity) |
-| `blocking_chains` | 0.01 – 2.0 | Number of concurrent blocking chains (often 0; spikes under contention) |
-| `wait_stats` | 0.05 – 0.2 | Fixed set of 15 wait types |
-| `proc_wait_breakdown` | 0.5 – 3.0 | Number of distinct statements × wait categories (capped at 50 rows) |
-| `autogrowth_events` | 0.01 – 0.5 | Number of auto-growth events in the last 10 minutes (often 0) |
-| `deadlock_graphs` | 0.01 – 0.2 | Number of deadlocks in the last 10 minutes (capped at 10 rows) |
-
-**Total estimated range:** 0.7 – 6.4 DDUs/hr per monitored instance (with all feature sets enabled).
-
-> **Tip:** Start with `latch_analysis` and `wait_stats` only, then enable additional sets as needed to minimize DDU usage.
-
----
-
-## Known Limitations
-
-### 1. Auto-Growth Events — Default Trace Alternative
-
-The original design used `xp_readerrorlog` with temporary tables, which EF2's single-statement SQL execution model does not support. This extension uses the **SQL Server default trace** (`sys.fn_trace_gettable`) instead.
-
-- The default trace is a rolling set of files with limited size (~20 MB per file, 5 files).
-- If the default trace is disabled (`sp_configure 'default trace enabled'`), this feature set will return no data.
-- The 10-minute lookback window may miss events on extremely busy servers where the trace rolls over quickly.
-
-**OneAgent Log Monitoring Alternative:**
-
-If the default trace approach is insufficient, configure OneAgent to ingest the SQL Server error log directly:
-
-1. Find the error log path:
-   ```sql
-   SELECT SERVERPROPERTY('ErrorLogFileName');
-   ```
-2. In Dynatrace, go to **Settings → Log Monitoring → Log sources** and add the error log path.
-3. Use log processing rules to extract auto-growth events (match `autogrow` in the log text).
-
-### 2. Deadlock Graph Truncation
-
-Deadlock XML graphs from the `system_health` ring buffer can exceed 10 KB. The extension truncates the `deadlock_graph` dimension to 4,000 characters. For full deadlock analysis:
-
-- Use SQL Server Management Studio (SSMS) to view complete deadlock graphs.
-- Or configure a dedicated Extended Events session to write deadlock reports to a file target.
-
-### 3. Query Store Availability
-
-The `proc_wait_breakdown` feature set requires:
-
-- SQL Server 2017 or later (for `sys.query_store_wait_stats`).
-- Query Store enabled on the target database (`ALTER DATABASE [YourDB] SET QUERY_STORE = ON`).
-- The extension must be configured to connect to the database with Query Store enabled.
-
-If Query Store is not enabled, this feature set will produce errors in the extension logs. Disable it in the monitoring configuration if not applicable.
-
-### 4. Ring Buffer Size
-
-The `system_health` Extended Events session has a finite ring buffer. On busy servers, older events are overwritten. The 10-minute timestamp filter mitigates re-ingestion but cannot recover events that were already overwritten before the extension polled.
-
-### 5. Dimension Cardinality
-
-The `blocking_chains` and `proc_wait_breakdown` feature sets capture query text as dimensions. Very long or highly variable query text can increase DDU consumption. The `blocked_query`, `blocker_query`, and `query_sql_text` dimensions may be truncated by the Dynatrace metric dimension length limit.
-
-### 6. Cumulative vs. Delta Values
-
-The `latch_analysis` and `wait_stats` groups query cumulative DMV counters (`sys.dm_os_latch_stats`, `sys.dm_os_wait_stats`). These counters reset on SQL Server restart. The extension ingests gauge values; use DQL `rate()` or delta calculations in dashboards for per-interval analysis.
-
----
-
-## Topology
-
-This extension creates topology rules that associate all `custom.mssql.*` metrics with `sql:sql_server_instance` entities. The entity ID is derived from `@@SERVERNAME`.
-
-If you also run the official `com.dynatrace.extension.sql-server` extension, the entities created by this custom extension will have **different entity IDs**. To correlate data from both extensions, filter by the `sql_server_instance` dimension in DQL queries.
+*Estimates assume a moderately active SQL Server with typical cardinality. Actual consumption varies based on the number of active latch classes, wait types, indexes, and blocking chains.*
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Possible Cause | Resolution |
-|---|---|---|
-| No data for any feature set | ActiveGate cannot connect to SQL Server | Verify network connectivity, firewall rules, and SQL authentication from the ActiveGate host |
-| `latch_analysis` returns empty | No latch contention at poll time | This is expected during low-activity periods |
-| `proc_wait_breakdown` errors | Query Store not enabled or SQL Server < 2017 | Enable Query Store or disable this feature set |
-| `autogrowth_events` returns empty | Default trace disabled or no growth events | Verify `sp_configure 'default trace enabled'` returns 1 |
-| `deadlock_graphs` returns empty | No deadlocks or ring buffer overwritten | Expected if no deadlocks occurred; check system_health session status |
-| High DDU consumption | High cardinality in blocking_chains | Limit monitoring to critical instances; disable `blocking_chains` if DDU budget is tight |
+### Extension not collecting data
+1. Verify ActiveGate connectivity to SQL Server (port 1433)
+2. Check SQL permissions: `SELECT HAS_PERMS_BY_NAME(null, null, 'VIEW SERVER STATE')`
+3. Review ActiveGate logs: `remotepluginmodule.log`
+
+### `proc_wait_breakdown` returns no data
+- Verify Query Store is enabled: `SELECT actual_state_desc FROM sys.database_query_store_options`
+- Verify SQL Server is 2017+: `SELECT @@VERSION`
+- Ensure the extension is configured against the correct database
+
+### `autogrowth_events` returns no data
+- Verify default trace is running: `SELECT * FROM sys.traces WHERE id = 1`
+- Check time window: events only show up if auto-growth occurred in last 10 minutes
+
+### `deadlock_graphs` returns no data
+- Verify system_health XE is running: `SELECT * FROM sys.dm_xe_sessions WHERE name = 'system_health'`
+- Deadlocks must have occurred in the last 10 minutes to appear
+
+### XEvent sessions not capturing data
+- Verify session is running: `SELECT * FROM sys.dm_xe_sessions WHERE name = 'DT_SP_Diagnostics'`
+- Check blocked process threshold: `SELECT value_in_use FROM sys.configurations WHERE name = 'blocked process threshold (s)'` (must be > 0)
+
+### High DDU consumption
+- Disable feature sets you don't need
+- `index_operational_stats` and `proc_wait_breakdown` generate the most data — consider disabling if not actively investigating
 
 ---
 
-## License
+## Known Limitations
 
-This extension is provided as-is for custom diagnostic use. It is not an official Dynatrace extension and is not covered by Dynatrace support agreements.
+1. **Database-scoped queries:** Feature sets `proc_wait_breakdown`, `plan_regression_detection`, `missing_indexes`, `index_fragmentation`, and `stale_statistics` operate on the database specified in the monitoring configuration. To monitor multiple databases, create separate monitoring configurations.
+
+2. **Query Store dependency:** Feature sets 7 (`proc_wait_breakdown`) and 8 (`plan_regression_detection`) require SQL Server 2017+ with Query Store enabled. They will return empty results on SQL Server 2016 or if Query Store is disabled.
+
+3. **Cumulative DMV counters:** `sys.dm_os_latch_stats` and `sys.dm_os_wait_stats` return cumulative values since SQL Server startup. To see delta/rate, use the `rate` function in DQL or examine trends over time.
+
+4. **Dimension cardinality:** High-cardinality dimensions (like `query_sql_text`, `deadlock_graph`) may increase DDU consumption. The queries use `TOP N` limits to constrain result sets.
+
+5. **Deep Capture (Layer 3):** The `DT_SP_DeepCapture` XEvent session requires `ALTER ANY EVENT SESSION` permission to start/stop via Workflow. If this permission isn't granted, the session must be managed manually by a DBA.
+
+6. **Index fragmentation overhead:** The `index_fragmentation` feature set uses `LIMITED` mode to minimize impact, but can still be resource-intensive on very large databases. It runs hourly by default.
+
+7. **XEvent file target location:** The `DT_SP_Diagnostics` and `DT_SP_DeepCapture` XEvent sessions write .xel files to the SQL Server's default LOG directory. Ensure sufficient disk space (max 500 MB for Layer 2, 400 MB for Layer 3).

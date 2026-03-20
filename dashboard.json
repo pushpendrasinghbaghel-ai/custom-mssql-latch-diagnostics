@@ -4,87 +4,64 @@
     "clusterVersion": "1.303"
   },
   "dashboardMetadata": {
-    "name": "MSSQL Latch & Blocking Root Cause Analysis",
+    "name": "SP Deep Diagnostics — Root Cause Analysis",
     "shared": true,
-    "owner": "custom:mssql.latch.diagnostics",
-    "tags": ["MSSQL", "Latch", "Blocking", "Diagnostics"],
+    "owner": "custom:mssql.sp.diagnostics",
+    "tags": ["MSSQL", "SP Diagnostics", "Latch", "Blocking", "RCA"],
     "preset": false,
     "popularity": 1,
     "hasConsistentColors": false
   },
   "tiles": [
     {
+      "name": "Dashboard Header",
+      "tileType": "MARKDOWN",
+      "configured": true,
+      "bounds": { "top": 0, "left": 0, "width": 1520, "height": 76 },
+      "tileFilter": {},
+      "markdown": "## SP Deep Diagnostics — Root Cause Analysis\n\nPowered by `custom:mssql.sp.diagnostics`. Covers latch contention, wait analysis, memory grants, TempDB usage, blocking chains, I/O latency, plan regression, and health checks."
+    },
+
+    {
+      "name": "Section 1 Header",
+      "tileType": "MARKDOWN",
+      "configured": true,
+      "bounds": { "top": 76, "left": 0, "width": 1520, "height": 38 },
+      "tileFilter": {},
+      "markdown": "### Section 1: Latch & Wait Overview"
+    },
+    {
       "name": "Latch Waits by Class",
       "tileType": "DATA_EXPLORER",
       "configured": true,
-      "bounds": {
-        "top": 0,
-        "left": 0,
-        "width": 760,
-        "height": 380
-      },
+      "bounds": { "top": 114, "left": 0, "width": 760, "height": 380 },
       "tileFilter": {},
-      "isAutoRefreshDisabled": false,
-      "customName": "Latch Waits by Class",
+      "customName": "Latch Waits by Class — Top 15",
       "queries": [
         {
           "id": "A",
           "metric": "custom.mssql.latch.wait_time_ms",
           "splitBy": ["latch_class"],
           "sortBy": "DESC",
-          "sortByDimension": "",
-          "filterBy": {
-            "nestedFilters": [],
-            "criteria": []
-          },
+          "filterBy": { "nestedFilters": [], "criteria": [] },
           "limit": 15,
           "rate": "NONE",
-          "enabled": true,
-          "generatedMetricSelector": null
+          "enabled": true
         }
       ],
       "visualConfig": {
         "type": "TOP_LIST",
         "global": { "hideLegend": false },
-        "rules": [
-          {
-            "matcher": "A:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "MilliSecond"
-          }
-        ],
-        "axes": {
-          "xAxis": { "visible": true },
-          "yAxes": []
-        },
-        "heatmapSettings": { "yAxis": "VALUE" },
-        "thresholds": [
-          {
-            "axisTarget": "LEFT",
-            "rules": [
-              { "value": 0, "color": "#7dc540" },
-              { "value": 1000, "color": "#f5d30f" },
-              { "value": 10000, "color": "#dc172a" }
-            ],
-            "queryId": "",
-            "visible": true
-          }
-        ]
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "MilliSecond" }],
+        "thresholds": [{ "axisTarget": "LEFT", "rules": [{ "value": 0, "color": "#7dc540" }, { "value": 1000, "color": "#f5d30f" }, { "value": 10000, "color": "#dc172a" }], "queryId": "", "visible": true }]
       }
     },
     {
       "name": "Latch Waiting Requests Trend",
       "tileType": "DATA_EXPLORER",
       "configured": true,
-      "bounds": {
-        "top": 0,
-        "left": 760,
-        "width": 760,
-        "height": 380
-      },
+      "bounds": { "top": 114, "left": 760, "width": 760, "height": 380 },
       "tileFilter": {},
-      "isAutoRefreshDisabled": false,
       "customName": "Latch Waiting Requests Trend",
       "queries": [
         {
@@ -92,11 +69,7 @@
           "metric": "custom.mssql.latch.waiting_requests",
           "splitBy": ["latch_class"],
           "sortBy": "DESC",
-          "sortByDimension": "",
-          "filterBy": {
-            "nestedFilters": [],
-            "criteria": []
-          },
+          "filterBy": { "nestedFilters": [], "criteria": [] },
           "limit": 10,
           "rate": "NONE",
           "enabled": true
@@ -105,148 +78,24 @@
       "visualConfig": {
         "type": "GRAPH_CHART",
         "global": { "hideLegend": false },
-        "rules": [
-          {
-            "matcher": "A:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "Count"
-          }
-        ],
-        "axes": {
-          "xAxis": { "visible": true },
-          "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }]
-        }
-      }
-    },
-    {
-      "name": "Active Blocking Chains",
-      "tileType": "DATA_EXPLORER",
-      "configured": true,
-      "bounds": {
-        "top": 380,
-        "left": 0,
-        "width": 1520,
-        "height": 380
-      },
-      "tileFilter": {},
-      "isAutoRefreshDisabled": false,
-      "customName": "Active Blocking Chains",
-      "queries": [
-        {
-          "id": "A",
-          "metric": "custom.mssql.blocking.active_chains",
-          "splitBy": [],
-          "sortBy": "DESC",
-          "filterBy": {
-            "nestedFilters": [],
-            "criteria": []
-          },
-          "limit": 100,
-          "rate": "NONE",
-          "enabled": true
-        }
-      ],
-      "visualConfig": {
-        "type": "GRAPH_CHART",
-        "global": { "hideLegend": false },
-        "rules": [
-          {
-            "matcher": "A:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "Count"
-          }
-        ],
-        "axes": {
-          "xAxis": { "visible": true },
-          "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }]
-        },
-        "thresholds": [
-          {
-            "axisTarget": "LEFT",
-            "rules": [
-              { "value": 0, "color": "#7dc540" },
-              { "value": 1, "color": "#f5d30f" },
-              { "value": 5, "color": "#dc172a" }
-            ],
-            "queryId": "",
-            "visible": true
-          }
-        ]
-      }
-    },
-    {
-      "name": "Blocking Chain Details",
-      "tileType": "DATA_EXPLORER",
-      "configured": true,
-      "bounds": {
-        "top": 760,
-        "left": 0,
-        "width": 1520,
-        "height": 380
-      },
-      "tileFilter": {},
-      "isAutoRefreshDisabled": false,
-      "customName": "Blocking Chain Details",
-      "queries": [
-        {
-          "id": "A",
-          "metric": "custom.mssql.blocking.wait_time_ms",
-          "splitBy": [
-            "blocked_spid",
-            "blocker_spid",
-            "wait_type",
-            "database_name",
-            "blocked_query",
-            "blocker_query"
-          ],
-          "sortBy": "DESC",
-          "filterBy": {
-            "nestedFilters": [],
-            "criteria": []
-          },
-          "limit": 50,
-          "rate": "NONE",
-          "enabled": true
-        }
-      ],
-      "visualConfig": {
-        "type": "TABLE",
-        "global": { "hideLegend": false },
-        "rules": [
-          {
-            "matcher": "A:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "MilliSecond"
-          }
-        ]
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Count" }],
+        "axes": { "xAxis": { "visible": true }, "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }] }
       }
     },
     {
       "name": "Wait Type Breakdown",
       "tileType": "DATA_EXPLORER",
       "configured": true,
-      "bounds": {
-        "top": 1140,
-        "left": 0,
-        "width": 760,
-        "height": 380
-      },
+      "bounds": { "top": 494, "left": 0, "width": 760, "height": 380 },
       "tileFilter": {},
-      "isAutoRefreshDisabled": false,
-      "customName": "Wait Type Breakdown",
+      "customName": "Wait Type Breakdown — Pie Chart",
       "queries": [
         {
           "id": "A",
           "metric": "custom.mssql.wait.wait_time_ms",
           "splitBy": ["wait_type"],
           "sortBy": "DESC",
-          "filterBy": {
-            "nestedFilters": [],
-            "criteria": []
-          },
+          "filterBy": { "nestedFilters": [], "criteria": [] },
           "limit": 20,
           "rate": "NONE",
           "enabled": true
@@ -255,29 +104,16 @@
       "visualConfig": {
         "type": "PIE_CHART",
         "global": { "hideLegend": false },
-        "rules": [
-          {
-            "matcher": "A:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "MilliSecond"
-          }
-        ]
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "MilliSecond" }]
       }
     },
     {
       "name": "Signal Wait vs Total Wait",
       "tileType": "DATA_EXPLORER",
       "configured": true,
-      "bounds": {
-        "top": 1140,
-        "left": 760,
-        "width": 760,
-        "height": 380
-      },
+      "bounds": { "top": 494, "left": 760, "width": 760, "height": 380 },
       "tileFilter": {},
-      "isAutoRefreshDisabled": false,
-      "customName": "Signal Wait vs Total Wait",
+      "customName": "Signal Wait vs Total Wait (CPU Pressure Indicator)",
       "queries": [
         {
           "id": "A",
@@ -304,37 +140,240 @@
         "type": "GRAPH_CHART",
         "global": { "hideLegend": false },
         "rules": [
-          {
-            "matcher": "A:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "MilliSecond"
-          },
-          {
-            "matcher": "B:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "MilliSecond"
-          }
+          { "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "MilliSecond" },
+          { "matcher": "B:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "MilliSecond" }
         ],
-        "axes": {
-          "xAxis": { "visible": true },
-          "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }]
-        }
+        "axes": { "xAxis": { "visible": true }, "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }] }
       }
+    },
+
+    {
+      "name": "Section 2 Header",
+      "tileType": "MARKDOWN",
+      "configured": true,
+      "bounds": { "top": 874, "left": 0, "width": 1520, "height": 38 },
+      "tileFilter": {},
+      "markdown": "### Section 2: Blocking & Contention"
+    },
+    {
+      "name": "Active Blocking Chains",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 912, "left": 0, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Active Blocking Chains Count",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.blocking.active_chains",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 100,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "GRAPH_CHART",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Count" }],
+        "axes": { "xAxis": { "visible": true }, "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }] },
+        "thresholds": [{ "axisTarget": "LEFT", "rules": [{ "value": 0, "color": "#7dc540" }, { "value": 1, "color": "#f5d30f" }, { "value": 5, "color": "#dc172a" }], "queryId": "", "visible": true }]
+      }
+    },
+    {
+      "name": "Blocking Chain Details",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 912, "left": 760, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Blocking Chain Details",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.blocking.wait_time_ms",
+          "splitBy": ["blocked_spid", "blocker_spid", "wait_type", "database_name", "blocked_query", "blocker_query"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 50,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TABLE",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "MilliSecond" }]
+      }
+    },
+    {
+      "name": "Deadlock Events",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 1292, "left": 0, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Deadlock Events (Last 24h)",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.deadlock.event_count",
+          "splitBy": ["deadlock_time"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 50,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TABLE",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Count" }]
+      }
+    },
+    {
+      "name": "Index Lock & Latch Contention",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 1292, "left": 760, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Top Indexes by Lock/Latch Contention",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.index.page_latch_wait_ms",
+          "splitBy": ["table_name", "index_name"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 15,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TOP_LIST",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "MilliSecond" }],
+        "thresholds": [{ "axisTarget": "LEFT", "rules": [{ "value": 0, "color": "#7dc540" }, { "value": 500, "color": "#f5d30f" }, { "value": 5000, "color": "#dc172a" }], "queryId": "", "visible": true }]
+      }
+    },
+
+    {
+      "name": "Section 3 Header",
+      "tileType": "MARKDOWN",
+      "configured": true,
+      "bounds": { "top": 1672, "left": 0, "width": 1520, "height": 38 },
+      "tileFilter": {},
+      "markdown": "### Section 3: Memory & TempDB"
+    },
+    {
+      "name": "Memory Grant Waiting Count",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 1710, "left": 0, "width": 506, "height": 380 },
+      "tileFilter": {},
+      "customName": "Memory Grant Waiting Sessions",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.memory.grant_waiting_count",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 100,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "GRAPH_CHART",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Count" }],
+        "axes": { "xAxis": { "visible": true }, "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }] },
+        "thresholds": [{ "axisTarget": "LEFT", "rules": [{ "value": 0, "color": "#7dc540" }, { "value": 1, "color": "#f5d30f" }, { "value": 5, "color": "#dc172a" }], "queryId": "", "visible": true }]
+      }
+    },
+    {
+      "name": "Memory Grant Deficit",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 1710, "left": 506, "width": 507, "height": 380 },
+      "tileFilter": {},
+      "customName": "Memory Grant Deficit (Spill Risk)",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.memory.grant_deficit_kb",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 100,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "GRAPH_CHART",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "KiloByte" }],
+        "axes": { "xAxis": { "visible": true }, "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }] }
+      }
+    },
+    {
+      "name": "TempDB Usage",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 1710, "left": 1013, "width": 507, "height": 380 },
+      "tileFilter": {},
+      "customName": "TempDB Total vs Top Session Usage",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.tempdb.total_usage_kb",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 100,
+          "rate": "NONE",
+          "enabled": true
+        },
+        {
+          "id": "B",
+          "metric": "custom.mssql.tempdb.top_session_usage_kb",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 100,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "GRAPH_CHART",
+        "global": { "hideLegend": false },
+        "rules": [
+          { "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "KiloByte" },
+          { "matcher": "B:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "KiloByte" }
+        ],
+        "axes": { "xAxis": { "visible": true }, "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }] }
+      }
+    },
+
+    {
+      "name": "Section 4 Header",
+      "tileType": "MARKDOWN",
+      "configured": true,
+      "bounds": { "top": 2090, "left": 0, "width": 1520, "height": 38 },
+      "tileFilter": {},
+      "markdown": "### Section 4: Query Performance"
     },
     {
       "name": "Proc Statement Waits",
       "tileType": "DATA_EXPLORER",
       "configured": true,
-      "bounds": {
-        "top": 1520,
-        "left": 0,
-        "width": 1520,
-        "height": 380
-      },
+      "bounds": { "top": 2128, "left": 0, "width": 1520, "height": 380 },
       "tileFilter": {},
-      "isAutoRefreshDisabled": false,
       "customName": "Proc Statement Waits — Top 20 by Total Wait Time",
       "queries": [
         {
@@ -351,28 +390,128 @@
       "visualConfig": {
         "type": "TABLE",
         "global": { "hideLegend": false },
-        "rules": [
-          {
-            "matcher": "A:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "MilliSecond"
-          }
-        ]
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "MilliSecond" }]
+      }
+    },
+    {
+      "name": "Plan Regression — Variance Ratio",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 2508, "left": 0, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Plan Regression — Queries with High Variance Ratio",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.plan.variance_ratio",
+          "splitBy": ["proc_name", "query_sql_text"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 10,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TOP_LIST",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Ratio" }],
+        "thresholds": [{ "axisTarget": "LEFT", "rules": [{ "value": 0, "color": "#7dc540" }, { "value": 5, "color": "#f5d30f" }, { "value": 10, "color": "#dc172a" }], "queryId": "", "visible": true }]
+      }
+    },
+    {
+      "name": "Multi-Plan Query Count",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 2508, "left": 760, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Multi-Plan Query Count (Parameter Sniffing Risk)",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.plan.multi_plan_query_count",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 100,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "GRAPH_CHART",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Count" }],
+        "axes": { "xAxis": { "visible": true }, "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }] }
+      }
+    },
+
+    {
+      "name": "Section 5 Header",
+      "tileType": "MARKDOWN",
+      "configured": true,
+      "bounds": { "top": 2888, "left": 0, "width": 1520, "height": 38 },
+      "tileFilter": {},
+      "markdown": "### Section 5: I/O & Storage"
+    },
+    {
+      "name": "File Read Latency",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 2926, "left": 0, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Avg Read Latency by Database File",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.io.read_latency_ms",
+          "splitBy": ["database_name", "file_name"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 20,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TOP_LIST",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "MilliSecond" }],
+        "thresholds": [{ "axisTarget": "LEFT", "rules": [{ "value": 0, "color": "#7dc540" }, { "value": 20, "color": "#f5d30f" }, { "value": 50, "color": "#dc172a" }], "queryId": "", "visible": true }]
+      }
+    },
+    {
+      "name": "File Write Latency",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 2926, "left": 760, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Avg Write Latency by Database File",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.io.write_latency_ms",
+          "splitBy": ["database_name", "file_name"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 20,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TOP_LIST",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "MilliSecond" }],
+        "thresholds": [{ "axisTarget": "LEFT", "rules": [{ "value": 0, "color": "#7dc540" }, { "value": 5, "color": "#f5d30f" }, { "value": 20, "color": "#dc172a" }], "queryId": "", "visible": true }]
       }
     },
     {
       "name": "Auto-Growth Event Timeline",
       "tileType": "DATA_EXPLORER",
       "configured": true,
-      "bounds": {
-        "top": 1900,
-        "left": 0,
-        "width": 760,
-        "height": 380
-      },
+      "bounds": { "top": 3306, "left": 0, "width": 760, "height": 380 },
       "tileFilter": {},
-      "isAutoRefreshDisabled": false,
       "customName": "Auto-Growth Event Timeline",
       "queries": [
         {
@@ -389,32 +528,16 @@
       "visualConfig": {
         "type": "GRAPH_CHART",
         "global": { "hideLegend": false },
-        "rules": [
-          {
-            "matcher": "A:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "Count"
-          }
-        ],
-        "axes": {
-          "xAxis": { "visible": true },
-          "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }]
-        }
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Count" }],
+        "axes": { "xAxis": { "visible": true }, "yAxes": [{ "visible": true, "min": "AUTO", "max": "AUTO", "position": "LEFT" }] }
       }
     },
     {
       "name": "Auto-Growth vs Latch Wait Correlation",
       "tileType": "DATA_EXPLORER",
       "configured": true,
-      "bounds": {
-        "top": 1900,
-        "left": 760,
-        "width": 760,
-        "height": 380
-      },
+      "bounds": { "top": 3306, "left": 760, "width": 760, "height": 380 },
       "tileFilter": {},
-      "isAutoRefreshDisabled": false,
       "customName": "Auto-Growth vs Latch Wait Correlation",
       "queries": [
         {
@@ -442,18 +565,8 @@
         "type": "GRAPH_CHART",
         "global": { "hideLegend": false },
         "rules": [
-          {
-            "matcher": "A:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "MilliSecond"
-          },
-          {
-            "matcher": "B:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "Count"
-          }
+          { "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "MilliSecond" },
+          { "matcher": "B:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Count" }
         ],
         "axes": {
           "xAxis": { "visible": true },
@@ -464,27 +577,142 @@
         }
       }
     },
+
     {
-      "name": "Deadlock Events",
+      "name": "Section 6 Header",
+      "tileType": "MARKDOWN",
+      "configured": true,
+      "bounds": { "top": 3686, "left": 0, "width": 1520, "height": 38 },
+      "tileFilter": {},
+      "markdown": "### Section 6: Health Check (Layer 4 — Hourly)"
+    },
+    {
+      "name": "Missing Indexes",
       "tileType": "DATA_EXPLORER",
       "configured": true,
-      "bounds": {
-        "top": 2280,
-        "left": 0,
-        "width": 1520,
-        "height": 380
-      },
+      "bounds": { "top": 3724, "left": 0, "width": 1520, "height": 380 },
       "tileFilter": {},
-      "isAutoRefreshDisabled": false,
-      "customName": "Deadlock Events (Last 24h)",
+      "customName": "Missing Indexes — Top 25 by Improvement Score",
       "queries": [
         {
           "id": "A",
-          "metric": "custom.mssql.deadlock.event_count",
-          "splitBy": ["deadlock_time"],
+          "metric": "custom.mssql.missing_index.improvement_score",
+          "splitBy": ["table_name", "equality_columns", "inequality_columns", "included_columns"],
           "sortBy": "DESC",
           "filterBy": { "nestedFilters": [], "criteria": [] },
-          "limit": 50,
+          "limit": 25,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TABLE",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [] }]
+      }
+    },
+    {
+      "name": "Index Fragmentation",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 4104, "left": 0, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Index Fragmentation > 10%",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.fragmentation.avg_percent",
+          "splitBy": ["table_name", "index_name"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 25,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TOP_LIST",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Percent" }],
+        "thresholds": [{ "axisTarget": "LEFT", "rules": [{ "value": 0, "color": "#7dc540" }, { "value": 30, "color": "#f5d30f" }, { "value": 70, "color": "#dc172a" }], "queryId": "", "visible": true }]
+      }
+    },
+    {
+      "name": "Stale Statistics",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 4104, "left": 760, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Stale Statistics — Modification %",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.stats.modification_percent",
+          "splitBy": ["table_name", "stats_name"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 25,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TOP_LIST",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Percent" }],
+        "thresholds": [{ "axisTarget": "LEFT", "rules": [{ "value": 0, "color": "#7dc540" }, { "value": 20, "color": "#f5d30f" }, { "value": 50, "color": "#dc172a" }], "queryId": "", "visible": true }]
+      }
+    },
+    {
+      "name": "Server Configuration Flags",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 4484, "left": 0, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "Server Configuration Values",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.config.value",
+          "splitBy": ["config_name"],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 20,
+          "rate": "NONE",
+          "enabled": true
+        }
+      ],
+      "visualConfig": {
+        "type": "TABLE",
+        "global": { "hideLegend": false },
+        "rules": [{ "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [] }]
+      }
+    },
+    {
+      "name": "TempDB Config",
+      "tileType": "DATA_EXPLORER",
+      "configured": true,
+      "bounds": { "top": 4484, "left": 760, "width": 760, "height": 380 },
+      "tileFilter": {},
+      "customName": "TempDB File Configuration",
+      "queries": [
+        {
+          "id": "A",
+          "metric": "custom.mssql.config.tempdb_file_count",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 100,
+          "rate": "NONE",
+          "enabled": true
+        },
+        {
+          "id": "B",
+          "metric": "custom.mssql.config.tempdb_files_equal",
+          "splitBy": [],
+          "sortBy": "DESC",
+          "filterBy": { "nestedFilters": [], "criteria": [] },
+          "limit": 100,
           "rate": "NONE",
           "enabled": true
         }
@@ -493,28 +721,10 @@
         "type": "TABLE",
         "global": { "hideLegend": false },
         "rules": [
-          {
-            "matcher": "A:",
-            "properties": { "color": "DEFAULT" },
-            "seriesOverrides": [],
-            "unitTransform": "Count"
-          }
+          { "matcher": "A:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Count" },
+          { "matcher": "B:", "properties": { "color": "DEFAULT" }, "seriesOverrides": [], "unitTransform": "Count" }
         ]
       }
-    },
-    {
-      "name": "Dashboard Header",
-      "tileType": "MARKDOWN",
-      "configured": true,
-      "bounds": {
-        "top": -76,
-        "left": 0,
-        "width": 1520,
-        "height": 76
-      },
-      "tileFilter": {},
-      "isAutoRefreshDisabled": false,
-      "markdown": "## MSSQL Latch & Blocking Root Cause Analysis\n\nPowered by `custom:mssql.latch.diagnostics` extension. Covers latch contention, blocking chains, wait stats, procedure-level waits, auto-growth detection, and deadlock capture."
     }
   ]
 }

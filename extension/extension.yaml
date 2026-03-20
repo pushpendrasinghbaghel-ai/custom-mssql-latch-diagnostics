@@ -1,5 +1,5 @@
-name: "custom:mssql.latch.diagnostics"
-version: 1.0.0
+name: "custom:mssql.sp.diagnostics"
+version: 2.0.0
 minDynatraceVersion: "1.303"
 author:
   name: "Custom Extension"
@@ -8,7 +8,8 @@ author:
 # Metric Definitions
 # ---------------------------------------------------------------------------
 metrics:
-  # --- Latch Analysis ---
+
+  # ===== Feature Set 1: Latch Analysis =====
   - key: custom.mssql.latch.wait_time_ms
     metadata:
       displayName: "Latch Wait Time"
@@ -27,45 +28,180 @@ metrics:
       description: "Maximum single latch wait time by latch class"
       unit: MilliSecond
 
-  # --- Blocking Chains ---
-  - key: custom.mssql.blocking.wait_time_ms
-    metadata:
-      displayName: "Blocking Wait Time"
-      description: "Wait time of blocked session in the blocking chain"
-      unit: MilliSecond
-
-  - key: custom.mssql.blocking.active_chains
-    metadata:
-      displayName: "Active Blocking Chains"
-      description: "Total number of currently active blocking chains"
-      unit: Count
-
-  # --- Wait Stats ---
+  # ===== Feature Set 2: Wait Analysis =====
   - key: custom.mssql.wait.wait_time_ms
     metadata:
       displayName: "OS Wait Time"
-      description: "Cumulative wait time for latch-related OS wait types"
+      description: "Cumulative wait time by wait type from sys.dm_os_wait_stats"
       unit: MilliSecond
 
   - key: custom.mssql.wait.waiting_tasks
     metadata:
       displayName: "Waiting Tasks Count"
-      description: "Number of tasks waiting on latch-related wait types"
+      description: "Number of tasks waiting on each wait type"
       unit: Count
 
   - key: custom.mssql.wait.max_wait_time_ms
     metadata:
       displayName: "OS Max Wait Time"
-      description: "Maximum single wait time for latch-related OS wait types"
+      description: "Maximum single wait time for each wait type"
       unit: MilliSecond
 
   - key: custom.mssql.wait.signal_wait_time_ms
     metadata:
       displayName: "Signal Wait Time"
-      description: "Time between signaling and running for latch-related waits"
+      description: "Time between signaling and running (CPU scheduling pressure indicator)"
       unit: MilliSecond
 
-  # --- Procedure Wait Breakdown (Query Store) ---
+  # ===== Feature Set 3: Memory Grants =====
+  - key: custom.mssql.memory.grant_wait_time_ms
+    metadata:
+      displayName: "Memory Grant Max Wait Time"
+      description: "Maximum wait time among sessions waiting for a memory grant"
+      unit: MilliSecond
+
+  - key: custom.mssql.memory.grant_waiting_count
+    metadata:
+      displayName: "Memory Grant Waiting Sessions"
+      description: "Number of sessions currently waiting for a memory grant"
+      unit: Count
+
+  - key: custom.mssql.memory.grant_deficit_kb
+    metadata:
+      displayName: "Memory Grant Deficit"
+      description: "Sum of (ideal - granted) KB across all sessions with insufficient grants (spill risk)"
+      unit: KiloByte
+
+  - key: custom.mssql.memory.requested_kb
+    metadata:
+      displayName: "Memory Requested"
+      description: "Requested memory for a specific memory grant"
+      unit: KiloByte
+
+  - key: custom.mssql.memory.granted_kb
+    metadata:
+      displayName: "Memory Granted"
+      description: "Granted memory for a specific memory grant"
+      unit: KiloByte
+
+  - key: custom.mssql.memory.used_kb
+    metadata:
+      displayName: "Memory Used"
+      description: "Used memory for a specific memory grant"
+      unit: KiloByte
+
+  - key: custom.mssql.memory.ideal_kb
+    metadata:
+      displayName: "Ideal Memory"
+      description: "Ideal memory for a specific memory grant (ideal >> granted = spill guaranteed)"
+      unit: KiloByte
+
+  # ===== Feature Set 4: TempDB Usage =====
+  - key: custom.mssql.tempdb.total_usage_kb
+    metadata:
+      displayName: "TempDB Total Usage"
+      description: "Total TempDB usage across all active sessions (KB)"
+      unit: KiloByte
+
+  - key: custom.mssql.tempdb.top_session_usage_kb
+    metadata:
+      displayName: "TempDB Top Session Usage"
+      description: "Maximum TempDB usage by a single session (KB)"
+      unit: KiloByte
+
+  # ===== Feature Set 5: Index Operational Stats =====
+  - key: custom.mssql.index.page_latch_wait_ms
+    metadata:
+      displayName: "Index Page Latch Wait Time"
+      description: "Page latch wait time for a specific index"
+      unit: MilliSecond
+
+  - key: custom.mssql.index.page_latch_wait_count
+    metadata:
+      displayName: "Index Page Latch Wait Count"
+      description: "Page latch wait count for a specific index"
+      unit: Count
+
+  - key: custom.mssql.index.page_io_latch_wait_ms
+    metadata:
+      displayName: "Index Page IO Latch Wait Time"
+      description: "Page IO latch wait time for a specific index"
+      unit: MilliSecond
+
+  - key: custom.mssql.index.page_io_latch_wait_count
+    metadata:
+      displayName: "Index Page IO Latch Wait Count"
+      description: "Page IO latch wait count for a specific index"
+      unit: Count
+
+  - key: custom.mssql.index.row_lock_wait_ms
+    metadata:
+      displayName: "Index Row Lock Wait Time"
+      description: "Row lock wait time for a specific index"
+      unit: MilliSecond
+
+  - key: custom.mssql.index.row_lock_wait_count
+    metadata:
+      displayName: "Index Row Lock Wait Count"
+      description: "Row lock wait count for a specific index"
+      unit: Count
+
+  - key: custom.mssql.index.page_lock_wait_ms
+    metadata:
+      displayName: "Index Page Lock Wait Time"
+      description: "Page lock wait time for a specific index"
+      unit: MilliSecond
+
+  - key: custom.mssql.index.page_lock_wait_count
+    metadata:
+      displayName: "Index Page Lock Wait Count"
+      description: "Page lock wait count for a specific index"
+      unit: Count
+
+  - key: custom.mssql.index.range_scan_count
+    metadata:
+      displayName: "Index Range Scan Count"
+      description: "Number of range scans on a specific index"
+      unit: Count
+
+  - key: custom.mssql.index.singleton_lookup_count
+    metadata:
+      displayName: "Index Singleton Lookup Count"
+      description: "Number of singleton lookups on a specific index"
+      unit: Count
+
+  # ===== Feature Set 6: File I/O Detail =====
+  - key: custom.mssql.io.read_latency_ms
+    metadata:
+      displayName: "Avg Read Latency"
+      description: "Average read latency per I/O operation by database file"
+      unit: MilliSecond
+
+  - key: custom.mssql.io.write_latency_ms
+    metadata:
+      displayName: "Avg Write Latency"
+      description: "Average write latency per I/O operation by database file"
+      unit: MilliSecond
+
+  - key: custom.mssql.io.total_stall_ms
+    metadata:
+      displayName: "Total IO Stall"
+      description: "Total I/O stall (read + write) for a database file"
+      unit: MilliSecond
+
+  - key: custom.mssql.io.reads
+    metadata:
+      displayName: "IO Read Count"
+      description: "Cumulative number of read operations on a database file"
+      unit: Count
+
+  - key: custom.mssql.io.writes
+    metadata:
+      displayName: "IO Write Count"
+      description: "Cumulative number of write operations on a database file"
+      unit: Count
+
+  # ===== Feature Set 7: Proc Wait Breakdown (Query Store) =====
   - key: custom.mssql.proc_wait.total_wait_time_ms
     metadata:
       displayName: "Proc Statement Total Wait Time"
@@ -105,10 +241,72 @@ metrics:
   - key: custom.mssql.proc_wait.avg_logical_io_reads
     metadata:
       displayName: "Proc Statement Avg Logical IO Reads"
-      description: "Average logical IO reads per execution"
+      description: "Average logical I/O reads per execution"
       unit: Count
 
-  # --- Auto-Growth Events ---
+  - key: custom.mssql.proc_wait.avg_physical_io_reads
+    metadata:
+      displayName: "Proc Statement Avg Physical IO Reads"
+      description: "Average physical I/O reads per execution"
+      unit: Count
+
+  - key: custom.mssql.proc_wait.avg_query_max_used_memory
+    metadata:
+      displayName: "Proc Statement Avg Max Used Memory"
+      description: "Average maximum memory used per execution (8KB pages)"
+      unit: Count
+
+  - key: custom.mssql.proc_wait.avg_tempdb_space_used
+    metadata:
+      displayName: "Proc Statement Avg TempDB Space Used"
+      description: "Average TempDB space used per execution (8KB pages)"
+      unit: Count
+
+  # ===== Feature Set 8: Plan Regression Detection =====
+  - key: custom.mssql.plan.variance_ratio
+    metadata:
+      displayName: "Plan Variance Ratio"
+      description: "Ratio of worst plan avg duration to best plan avg duration (>5 = parameter sniffing)"
+      unit: Ratio
+
+  - key: custom.mssql.plan.plan_count
+    metadata:
+      displayName: "Plan Count"
+      description: "Number of distinct execution plans for a query"
+      unit: Count
+
+  - key: custom.mssql.plan.best_avg_duration
+    metadata:
+      displayName: "Best Plan Avg Duration"
+      description: "Average duration of the best execution plan (microseconds)"
+      unit: MicroSecond
+
+  - key: custom.mssql.plan.worst_avg_duration
+    metadata:
+      displayName: "Worst Plan Avg Duration"
+      description: "Average duration of the worst execution plan (microseconds)"
+      unit: MicroSecond
+
+  - key: custom.mssql.plan.multi_plan_query_count
+    metadata:
+      displayName: "Multi-Plan Query Count"
+      description: "Total number of queries inside SPs with multiple execution plans"
+      unit: Count
+
+  # ===== Blocking Chains =====
+  - key: custom.mssql.blocking.wait_time_ms
+    metadata:
+      displayName: "Blocking Wait Time"
+      description: "Wait time of the blocked session in the blocking chain"
+      unit: MilliSecond
+
+  - key: custom.mssql.blocking.active_chains
+    metadata:
+      displayName: "Active Blocking Chains"
+      description: "Total number of currently active blocking chains"
+      unit: Count
+
+  # ===== Autogrowth Events =====
   - key: custom.mssql.autogrowth.duration_us
     metadata:
       displayName: "Auto-Growth Duration"
@@ -127,11 +325,81 @@ metrics:
       description: "Number of auto-growth events detected"
       unit: Count
 
-  # --- Deadlock Graphs ---
+  # ===== Deadlock Graphs =====
   - key: custom.mssql.deadlock.event_count
     metadata:
       displayName: "Deadlock Event Count"
       description: "Number of deadlock events captured from system_health Extended Events"
+      unit: Count
+
+  # ===== Feature Set 9: Missing Indexes (Layer 4) =====
+  - key: custom.mssql.missing_index.improvement_score
+    metadata:
+      displayName: "Missing Index Improvement Score"
+      description: "Calculated improvement score: (seeks + scans) * avg_cost * (impact / 100)"
+      unit: Unspecified
+
+  - key: custom.mssql.missing_index.user_seeks
+    metadata:
+      displayName: "Missing Index User Seeks"
+      description: "Number of user seeks that would have benefited from the missing index"
+      unit: Count
+
+  - key: custom.mssql.missing_index.avg_user_impact
+    metadata:
+      displayName: "Missing Index Avg User Impact"
+      description: "Average percentage improvement the index would provide"
+      unit: Percent
+
+  # ===== Feature Set 10: Index Fragmentation (Layer 4) =====
+  - key: custom.mssql.fragmentation.avg_percent
+    metadata:
+      displayName: "Index Fragmentation Percent"
+      description: "Average fragmentation percentage for the index"
+      unit: Percent
+
+  - key: custom.mssql.fragmentation.page_count
+    metadata:
+      displayName: "Index Page Count"
+      description: "Number of pages in the index"
+      unit: Count
+
+  # ===== Feature Set 11: Stale Statistics (Layer 4) =====
+  - key: custom.mssql.stats.modification_counter
+    metadata:
+      displayName: "Statistics Modification Counter"
+      description: "Number of row modifications since statistics were last updated"
+      unit: Count
+
+  - key: custom.mssql.stats.modification_percent
+    metadata:
+      displayName: "Statistics Modification Percent"
+      description: "Percentage of rows modified since last statistics update"
+      unit: Percent
+
+  - key: custom.mssql.stats.total_rows
+    metadata:
+      displayName: "Statistics Total Rows"
+      description: "Total rows in the table when statistics were last computed"
+      unit: Count
+
+  # ===== Feature Set 12: Server Config Check (Layer 4) =====
+  - key: custom.mssql.config.value
+    metadata:
+      displayName: "Server Configuration Value"
+      description: "Active value for a SQL Server configuration setting"
+      unit: Unspecified
+
+  - key: custom.mssql.config.tempdb_file_count
+    metadata:
+      displayName: "TempDB Data File Count"
+      description: "Number of TempDB data files (should be 1 per core, max 8)"
+      unit: Count
+
+  - key: custom.mssql.config.tempdb_files_equal
+    metadata:
+      displayName: "TempDB Files Equal Size"
+      description: "1 if all TempDB data files are equal size, 0 otherwise"
       unit: Count
 
 # ---------------------------------------------------------------------------
@@ -140,7 +408,8 @@ metrics:
 sqlMssql:
 
   # =========================================================================
-  # Group 1: Latch Waits by Class
+  # Feature Set 1: Latch Waits by Class (Every 1 minute)
+  # Source: sys.dm_os_latch_stats
   # =========================================================================
   - group: latch_analysis
     featureSet: latch_analysis
@@ -173,13 +442,471 @@ sqlMssql:
             value: col:sql_server_instance
 
   # =========================================================================
-  # Group 2: Blocking Chains with Query Text
+  # Feature Set 2: Wait Analysis by Wait Type (Every 1 minute)
+  # Source: sys.dm_os_wait_stats
+  # =========================================================================
+  - group: wait_analysis
+    featureSet: wait_analysis
+    subgroups:
+      - subgroup: os_wait_stats
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              wait_type,
+              waiting_tasks_count,
+              wait_time_ms,
+              max_wait_time_ms,
+              signal_wait_time_ms
+          FROM sys.dm_os_wait_stats
+          WHERE wait_type IN (
+              'PAGELATCH_EX', 'PAGELATCH_SH', 'PAGELATCH_UP',
+              'PAGEIOLATCH_EX', 'PAGEIOLATCH_SH', 'PAGEIOLATCH_UP',
+              'LATCH_EX', 'LATCH_SH', 'LATCH_UP', 'LATCH_DT',
+              'IO_COMPLETION', 'WRITELOG', 'LOGBUFFER', 'ASYNC_IO_COMPLETION',
+              'RESOURCE_SEMAPHORE', 'RESOURCE_SEMAPHORE_QUERY_COMPILE',
+              'CXPACKET', 'CXCONSUMER', 'SOS_SCHEDULER_YIELD',
+              'LCK_M_X', 'LCK_M_S', 'LCK_M_U', 'LCK_M_IX', 'LCK_M_IS'
+          )
+          AND waiting_tasks_count > 0
+          ORDER BY wait_time_ms DESC
+        metrics:
+          - key: custom.mssql.wait.wait_time_ms
+            value: col:wait_time_ms
+            type: gauge
+          - key: custom.mssql.wait.waiting_tasks
+            value: col:waiting_tasks_count
+            type: gauge
+          - key: custom.mssql.wait.max_wait_time_ms
+            value: col:max_wait_time_ms
+            type: gauge
+          - key: custom.mssql.wait.signal_wait_time_ms
+            value: col:signal_wait_time_ms
+            type: gauge
+        dimensions:
+          - key: wait_type
+            value: col:wait_type
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Feature Set 3: Memory Grants (Every 1 minute)
+  # Source: sys.dm_exec_query_memory_grants
+  # =========================================================================
+  - group: memory_grants
+    featureSet: memory_grants
+    subgroups:
+
+      # --- Aggregate memory grant pressure ---
+      - subgroup: memory_grant_summary
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              ISNULL(MAX(mg.wait_time_ms), 0) AS max_grant_wait_time_ms,
+              SUM(CASE WHEN mg.wait_time_ms > 0 THEN 1 ELSE 0 END) AS grant_waiting_count,
+              ISNULL(SUM(CASE
+                  WHEN mg.ideal_memory_kb > ISNULL(mg.granted_memory_kb, 0)
+                  THEN mg.ideal_memory_kb - ISNULL(mg.granted_memory_kb, 0)
+                  ELSE 0
+              END), 0) AS grant_deficit_kb
+          FROM sys.dm_exec_query_memory_grants mg
+        metrics:
+          - key: custom.mssql.memory.grant_wait_time_ms
+            value: col:max_grant_wait_time_ms
+            type: gauge
+          - key: custom.mssql.memory.grant_waiting_count
+            value: col:grant_waiting_count
+            type: gauge
+          - key: custom.mssql.memory.grant_deficit_kb
+            value: col:grant_deficit_kb
+            type: gauge
+        dimensions:
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+      # --- Per-session memory grant detail (top 20 by grant size) ---
+      - subgroup: memory_grant_details
+        query: |
+          SELECT TOP 20
+              @@SERVERNAME AS sql_server_instance,
+              mg.session_id,
+              mg.requested_memory_kb,
+              ISNULL(mg.granted_memory_kb, 0) AS granted_memory_kb,
+              ISNULL(mg.used_memory_kb, 0) AS used_memory_kb,
+              mg.ideal_memory_kb,
+              mg.wait_time_ms,
+              mg.dop,
+              DB_NAME(r.database_id) AS database_name
+          FROM sys.dm_exec_query_memory_grants mg
+          LEFT JOIN sys.dm_exec_requests r
+              ON mg.session_id = r.session_id AND mg.request_id = r.request_id
+          WHERE mg.grant_time IS NOT NULL OR mg.wait_time_ms > 0
+          ORDER BY mg.requested_memory_kb DESC
+        metrics:
+          - key: custom.mssql.memory.requested_kb
+            value: col:requested_memory_kb
+            type: gauge
+          - key: custom.mssql.memory.granted_kb
+            value: col:granted_memory_kb
+            type: gauge
+          - key: custom.mssql.memory.used_kb
+            value: col:used_memory_kb
+            type: gauge
+          - key: custom.mssql.memory.ideal_kb
+            value: col:ideal_memory_kb
+            type: gauge
+        dimensions:
+          - key: session_id
+            value: col:session_id
+          - key: database_name
+            value: col:database_name
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Feature Set 4: TempDB Usage (Every 1 minute)
+  # Source: sys.dm_db_task_space_usage + sys.dm_exec_requests
+  # =========================================================================
+  - group: tempdb_usage
+    featureSet: tempdb_usage
+    subgroups:
+      - subgroup: tempdb_usage_summary
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              SUM(
+                  (tsu.internal_objects_alloc_page_count + tsu.user_objects_alloc_page_count
+                   - tsu.internal_objects_dealloc_page_count - tsu.user_objects_dealloc_page_count) * 8
+              ) AS total_usage_kb,
+              MAX(
+                  (tsu.internal_objects_alloc_page_count + tsu.user_objects_alloc_page_count
+                   - tsu.internal_objects_dealloc_page_count - tsu.user_objects_dealloc_page_count) * 8
+              ) AS top_session_usage_kb
+          FROM sys.dm_db_task_space_usage tsu
+          INNER JOIN sys.dm_exec_requests r
+              ON tsu.session_id = r.session_id AND tsu.request_id = r.request_id
+          WHERE (tsu.internal_objects_alloc_page_count + tsu.user_objects_alloc_page_count) > 128
+        metrics:
+          - key: custom.mssql.tempdb.total_usage_kb
+            value: col:total_usage_kb
+            type: gauge
+          - key: custom.mssql.tempdb.top_session_usage_kb
+            value: col:top_session_usage_kb
+            type: gauge
+        dimensions:
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Feature Set 5: Index Operational Stats (Every 5 minutes)
+  # Source: sys.dm_db_index_operational_stats
+  # =========================================================================
+  - group: index_operational_stats
+    featureSet: index_operational_stats
+    interval:
+      minutes: 5
+    subgroups:
+      - subgroup: index_ops
+        query: |
+          SELECT TOP 50
+              @@SERVERNAME AS sql_server_instance,
+              DB_NAME(ios.database_id) AS database_name,
+              OBJECT_NAME(ios.object_id, ios.database_id) AS table_name,
+              i.name AS index_name,
+              i.type_desc AS index_type,
+              ios.page_latch_wait_count,
+              ios.page_latch_wait_in_ms,
+              ios.page_io_latch_wait_count,
+              ios.page_io_latch_wait_in_ms,
+              ios.row_lock_wait_count,
+              ios.row_lock_wait_in_ms,
+              ios.page_lock_wait_count,
+              ios.page_lock_wait_in_ms,
+              ios.range_scan_count,
+              ios.singleton_lookup_count
+          FROM sys.dm_db_index_operational_stats(NULL, NULL, NULL, NULL) ios
+          INNER JOIN sys.indexes i
+              ON ios.object_id = i.object_id AND ios.index_id = i.index_id
+          WHERE ios.page_latch_wait_count > 0
+             OR ios.page_io_latch_wait_count > 0
+             OR ios.row_lock_wait_count > 0
+             OR ios.page_lock_wait_count > 0
+          ORDER BY (ios.page_latch_wait_in_ms + ios.page_io_latch_wait_in_ms
+                    + ios.row_lock_wait_in_ms + ios.page_lock_wait_in_ms) DESC
+        metrics:
+          - key: custom.mssql.index.page_latch_wait_ms
+            value: col:page_latch_wait_in_ms
+            type: gauge
+          - key: custom.mssql.index.page_latch_wait_count
+            value: col:page_latch_wait_count
+            type: gauge
+          - key: custom.mssql.index.page_io_latch_wait_ms
+            value: col:page_io_latch_wait_in_ms
+            type: gauge
+          - key: custom.mssql.index.page_io_latch_wait_count
+            value: col:page_io_latch_wait_count
+            type: gauge
+          - key: custom.mssql.index.row_lock_wait_ms
+            value: col:row_lock_wait_in_ms
+            type: gauge
+          - key: custom.mssql.index.row_lock_wait_count
+            value: col:row_lock_wait_count
+            type: gauge
+          - key: custom.mssql.index.page_lock_wait_ms
+            value: col:page_lock_wait_in_ms
+            type: gauge
+          - key: custom.mssql.index.page_lock_wait_count
+            value: col:page_lock_wait_count
+            type: gauge
+          - key: custom.mssql.index.range_scan_count
+            value: col:range_scan_count
+            type: gauge
+          - key: custom.mssql.index.singleton_lookup_count
+            value: col:singleton_lookup_count
+            type: gauge
+        dimensions:
+          - key: database_name
+            value: col:database_name
+          - key: table_name
+            value: col:table_name
+          - key: index_name
+            value: col:index_name
+          - key: index_type
+            value: col:index_type
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Feature Set 6: File I/O Detail (Every 1 minute)
+  # Source: sys.dm_io_virtual_file_stats + sys.master_files
+  # =========================================================================
+  - group: file_io_detail
+    featureSet: file_io_detail
+    subgroups:
+      - subgroup: file_io_stats
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              DB_NAME(vfs.database_id) AS database_name,
+              mf.name AS file_name,
+              mf.type_desc AS file_type,
+              vfs.num_of_reads,
+              vfs.num_of_writes,
+              vfs.io_stall AS total_io_stall_ms,
+              CASE WHEN vfs.num_of_reads > 0
+                   THEN vfs.io_stall_read_ms / vfs.num_of_reads
+                   ELSE 0 END AS avg_read_latency_ms,
+              CASE WHEN vfs.num_of_writes > 0
+                   THEN vfs.io_stall_write_ms / vfs.num_of_writes
+                   ELSE 0 END AS avg_write_latency_ms
+          FROM sys.dm_io_virtual_file_stats(NULL, NULL) vfs
+          INNER JOIN sys.master_files mf
+              ON vfs.database_id = mf.database_id AND vfs.file_id = mf.file_id
+          ORDER BY vfs.io_stall DESC
+        metrics:
+          - key: custom.mssql.io.read_latency_ms
+            value: col:avg_read_latency_ms
+            type: gauge
+          - key: custom.mssql.io.write_latency_ms
+            value: col:avg_write_latency_ms
+            type: gauge
+          - key: custom.mssql.io.total_stall_ms
+            value: col:total_io_stall_ms
+            type: gauge
+          - key: custom.mssql.io.reads
+            value: col:num_of_reads
+            type: gauge
+          - key: custom.mssql.io.writes
+            value: col:num_of_writes
+            type: gauge
+        dimensions:
+          - key: database_name
+            value: col:database_name
+          - key: file_name
+            value: col:file_name
+          - key: file_type
+            value: col:file_type
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Feature Set 7: Proc Wait Breakdown — Query Store (Every 5 minutes)
+  # Source: sys.query_store_wait_stats + runtime_stats + plan + query + text
+  # Requires: SQL Server 2017+ with Query Store enabled
+  # =========================================================================
+  - group: proc_wait_breakdown
+    featureSet: proc_wait_breakdown
+    interval:
+      minutes: 5
+    subgroups:
+      - subgroup: query_store_waits
+        query: |
+          SELECT TOP 100
+              @@SERVERNAME AS sql_server_instance,
+              qt.query_sql_text,
+              OBJECT_NAME(q.object_id) AS proc_name,
+              ws.wait_category_desc,
+              ws.total_query_wait_time_ms,
+              ws.avg_query_wait_time_ms,
+              ws.max_query_wait_time_ms,
+              rs.count_executions,
+              rs.avg_duration,
+              rs.avg_cpu_time,
+              rs.avg_logical_io_reads,
+              rs.avg_physical_io_reads,
+              rs.avg_query_max_used_memory,
+              rs.avg_tempdb_space_used,
+              p.plan_id,
+              p.is_forced_plan
+          FROM sys.query_store_wait_stats ws
+          JOIN sys.query_store_runtime_stats rs
+              ON ws.runtime_stats_interval_id = rs.runtime_stats_interval_id
+              AND ws.plan_id = rs.plan_id
+          JOIN sys.query_store_plan p ON ws.plan_id = p.plan_id
+          JOIN sys.query_store_query q ON p.query_id = q.query_id
+          JOIN sys.query_store_query_text qt ON q.query_text_id = qt.query_text_id
+          WHERE ws.wait_category_desc IN (
+              'Latch', 'Lock', 'Buffer Latch', 'Buffer IO',
+              'Memory', 'CPU', 'Network IO', 'Parallelism'
+          )
+          AND rs.last_execution_time > DATEADD(MINUTE, -10, GETUTCDATE())
+          ORDER BY ws.total_query_wait_time_ms DESC
+        metrics:
+          - key: custom.mssql.proc_wait.total_wait_time_ms
+            value: col:total_query_wait_time_ms
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_wait_time_ms
+            value: col:avg_query_wait_time_ms
+            type: gauge
+          - key: custom.mssql.proc_wait.max_wait_time_ms
+            value: col:max_query_wait_time_ms
+            type: gauge
+          - key: custom.mssql.proc_wait.count_executions
+            value: col:count_executions
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_duration
+            value: col:avg_duration
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_cpu_time
+            value: col:avg_cpu_time
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_logical_io_reads
+            value: col:avg_logical_io_reads
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_physical_io_reads
+            value: col:avg_physical_io_reads
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_query_max_used_memory
+            value: col:avg_query_max_used_memory
+            type: gauge
+          - key: custom.mssql.proc_wait.avg_tempdb_space_used
+            value: col:avg_tempdb_space_used
+            type: gauge
+        dimensions:
+          - key: query_sql_text
+            value: col:query_sql_text
+          - key: proc_name
+            value: col:proc_name
+          - key: wait_category_desc
+            value: col:wait_category_desc
+          - key: plan_id
+            value: col:plan_id
+          - key: is_forced_plan
+            value: col:is_forced_plan
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Feature Set 8: Plan Regression Detection (Every 5 minutes)
+  # Source: sys.query_store_plan + query + runtime_stats + text
+  # Requires: SQL Server 2017+ with Query Store enabled
+  # =========================================================================
+  - group: plan_regression_detection
+    featureSet: plan_regression_detection
+    interval:
+      minutes: 5
+    subgroups:
+
+      # --- Per-query plan regression detail ---
+      - subgroup: plan_regression_details
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              q.query_id,
+              qt.query_sql_text,
+              OBJECT_NAME(q.object_id) AS proc_name,
+              COUNT(DISTINCT p.plan_id) AS plan_count,
+              MIN(rs.avg_duration) AS best_plan_avg_duration,
+              MAX(rs.avg_duration) AS worst_plan_avg_duration,
+              CASE WHEN MIN(rs.avg_duration) > 0
+                   THEN MAX(rs.avg_duration) / MIN(rs.avg_duration)
+                   ELSE 0 END AS plan_variance_ratio
+          FROM sys.query_store_query q
+          JOIN sys.query_store_query_text qt ON q.query_text_id = qt.query_text_id
+          JOIN sys.query_store_plan p ON q.query_id = p.query_id
+          JOIN sys.query_store_runtime_stats rs ON p.plan_id = rs.plan_id
+          WHERE rs.last_execution_time > DATEADD(HOUR, -1, GETUTCDATE())
+              AND q.object_id > 0
+          GROUP BY q.query_id, qt.query_sql_text, q.object_id
+          HAVING COUNT(DISTINCT p.plan_id) > 1
+              AND CASE WHEN MIN(rs.avg_duration) > 0
+                       THEN MAX(rs.avg_duration) / MIN(rs.avg_duration)
+                       ELSE 0 END > 5
+          ORDER BY plan_variance_ratio DESC
+        metrics:
+          - key: custom.mssql.plan.variance_ratio
+            value: col:plan_variance_ratio
+            type: gauge
+          - key: custom.mssql.plan.plan_count
+            value: col:plan_count
+            type: gauge
+          - key: custom.mssql.plan.best_avg_duration
+            value: col:best_plan_avg_duration
+            type: gauge
+          - key: custom.mssql.plan.worst_avg_duration
+            value: col:worst_plan_avg_duration
+            type: gauge
+        dimensions:
+          - key: query_id
+            value: col:query_id
+          - key: query_sql_text
+            value: col:query_sql_text
+          - key: proc_name
+            value: col:proc_name
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+      # --- Aggregate count of multi-plan queries ---
+      - subgroup: plan_regression_count
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              COUNT(*) AS multi_plan_query_count
+          FROM (
+              SELECT q.query_id
+              FROM sys.query_store_query q
+              JOIN sys.query_store_plan p ON q.query_id = p.query_id
+              JOIN sys.query_store_runtime_stats rs ON p.plan_id = rs.plan_id
+              WHERE rs.last_execution_time > DATEADD(HOUR, -1, GETUTCDATE())
+                  AND q.object_id > 0
+              GROUP BY q.query_id
+              HAVING COUNT(DISTINCT p.plan_id) > 1
+          ) multi_plan
+        metrics:
+          - key: custom.mssql.plan.multi_plan_query_count
+            value: col:multi_plan_query_count
+            type: gauge
+        dimensions:
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Blocking Chains with Query Text (Every 1 minute)
+  # Source: sys.dm_exec_requests + sys.dm_exec_sessions + sys.dm_exec_sql_text
   # =========================================================================
   - group: blocking_chains
     featureSet: blocking_chains
     subgroups:
 
-      # --- Detailed blocking chain rows (log-event style via metrics + dimensions) ---
       - subgroup: blocking_chain_details
         query: |
           SELECT
@@ -236,7 +963,6 @@ sqlMssql:
           - key: sql_server_instance
             value: col:sql_server_instance
 
-      # --- Aggregate blocking chain count ---
       - subgroup: blocking_chain_count
         query: |
           SELECT
@@ -253,119 +979,9 @@ sqlMssql:
             value: col:sql_server_instance
 
   # =========================================================================
-  # Group 3: Wait Stats by Wait Type (latch-related)
+  # Auto-Growth Events via Default Trace (Every 5 minutes)
+  # Source: sys.fn_trace_gettable + sys.trace_events
   # =========================================================================
-  - group: wait_stats
-    featureSet: wait_stats
-    subgroups:
-      - subgroup: os_wait_stats
-        query: |
-          SELECT
-              @@SERVERNAME AS sql_server_instance,
-              wait_type,
-              waiting_tasks_count,
-              wait_time_ms,
-              max_wait_time_ms,
-              signal_wait_time_ms
-          FROM sys.dm_os_wait_stats
-          WHERE wait_type IN (
-              'PAGELATCH_EX', 'PAGELATCH_SH', 'PAGELATCH_UP',
-              'PAGEIOLATCH_EX', 'PAGEIOLATCH_SH', 'PAGEIOLATCH_UP',
-              'LATCH_EX', 'LATCH_SH', 'LATCH_UP', 'LATCH_DT',
-              'IO_COMPLETION', 'WRITELOG', 'LOGBUFFER',
-              'RESOURCE_SEMAPHORE', 'RESOURCE_SEMAPHORE_QUERY_COMPILE'
-          )
-          AND waiting_tasks_count > 0
-          ORDER BY wait_time_ms DESC
-        metrics:
-          - key: custom.mssql.wait.wait_time_ms
-            value: col:wait_time_ms
-            type: gauge
-          - key: custom.mssql.wait.waiting_tasks
-            value: col:waiting_tasks_count
-            type: gauge
-          - key: custom.mssql.wait.max_wait_time_ms
-            value: col:max_wait_time_ms
-            type: gauge
-          - key: custom.mssql.wait.signal_wait_time_ms
-            value: col:signal_wait_time_ms
-            type: gauge
-        dimensions:
-          - key: wait_type
-            value: col:wait_type
-          - key: sql_server_instance
-            value: col:sql_server_instance
-
-  # =========================================================================
-  # Group 4: Per-Statement Wait Breakdown (Query Store)
-  # =========================================================================
-  - group: proc_wait_breakdown
-    featureSet: proc_wait_breakdown
-    interval:
-      minutes: 5
-    subgroups:
-      - subgroup: query_store_waits
-        query: |
-          SELECT TOP 50
-              @@SERVERNAME AS sql_server_instance,
-              qt.query_sql_text,
-              OBJECT_NAME(q.object_id) AS proc_name,
-              ws.wait_category_desc,
-              ws.total_query_wait_time_ms,
-              ws.avg_query_wait_time_ms,
-              ws.max_query_wait_time_ms,
-              rs.count_executions,
-              rs.avg_duration,
-              rs.avg_cpu_time,
-              rs.avg_logical_io_reads
-          FROM sys.query_store_wait_stats ws
-          JOIN sys.query_store_runtime_stats rs
-              ON ws.runtime_stats_interval_id = rs.runtime_stats_interval_id
-              AND ws.plan_id = rs.plan_id
-          JOIN sys.query_store_plan p ON ws.plan_id = p.plan_id
-          JOIN sys.query_store_query q ON p.query_id = q.query_id
-          JOIN sys.query_store_query_text qt ON q.query_text_id = qt.query_text_id
-          WHERE ws.wait_category_desc IN ('Latch', 'Lock', 'Buffer Latch', 'Buffer IO')
-              AND rs.last_execution_time > DATEADD(MINUTE, -10, GETUTCDATE())
-          ORDER BY ws.total_query_wait_time_ms DESC
-        metrics:
-          - key: custom.mssql.proc_wait.total_wait_time_ms
-            value: col:total_query_wait_time_ms
-            type: gauge
-          - key: custom.mssql.proc_wait.avg_wait_time_ms
-            value: col:avg_query_wait_time_ms
-            type: gauge
-          - key: custom.mssql.proc_wait.max_wait_time_ms
-            value: col:max_query_wait_time_ms
-            type: gauge
-          - key: custom.mssql.proc_wait.count_executions
-            value: col:count_executions
-            type: gauge
-          - key: custom.mssql.proc_wait.avg_duration
-            value: col:avg_duration
-            type: gauge
-          - key: custom.mssql.proc_wait.avg_cpu_time
-            value: col:avg_cpu_time
-            type: gauge
-          - key: custom.mssql.proc_wait.avg_logical_io_reads
-            value: col:avg_logical_io_reads
-            type: gauge
-        dimensions:
-          - key: query_sql_text
-            value: col:query_sql_text
-          - key: proc_name
-            value: col:proc_name
-          - key: wait_category_desc
-            value: col:wait_category_desc
-          - key: sql_server_instance
-            value: col:sql_server_instance
-
-  # =========================================================================
-  # Group 5: Auto-Growth Events (via Default Trace)
-  # =========================================================================
-  # NOTE: The original spec used xp_readerrorlog with temp tables, which is
-  # incompatible with EF2 single-statement SQL. This uses the default trace
-  # instead. For the OneAgent log-monitoring alternative, see README.md.
   - group: autogrowth_events
     featureSet: autogrowth_events
     interval:
@@ -414,7 +1030,8 @@ sqlMssql:
             value: col:sql_server_instance
 
   # =========================================================================
-  # Group 6: Deadlock Graphs from Extended Events
+  # Deadlock Graphs from system_health XE (Every 5 minutes)
+  # Source: sys.dm_xe_session_targets (system_health ring buffer)
   # =========================================================================
   - group: deadlock_graphs
     featureSet: deadlock_graphs
@@ -453,6 +1070,211 @@ sqlMssql:
           - key: sql_server_instance
             value: col:sql_server_instance
 
+  # =========================================================================
+  # Feature Set 9: Missing Indexes — Layer 4 (Every 1 hour)
+  # Source: sys.dm_db_missing_index_details + groups + group_stats
+  # =========================================================================
+  - group: missing_indexes
+    featureSet: missing_indexes
+    interval:
+      minutes: 60
+    subgroups:
+      - subgroup: missing_index_details
+        query: |
+          SELECT TOP 25
+              @@SERVERNAME AS sql_server_instance,
+              DB_NAME(mid.database_id) AS database_name,
+              OBJECT_NAME(mid.object_id, mid.database_id) AS table_name,
+              mid.equality_columns,
+              mid.inequality_columns,
+              mid.included_columns,
+              migs.user_seeks,
+              migs.user_scans,
+              migs.avg_user_impact,
+              (migs.user_seeks + migs.user_scans)
+                  * migs.avg_total_user_cost
+                  * (migs.avg_user_impact / 100.0) AS improvement_score
+          FROM sys.dm_db_missing_index_details mid
+          INNER JOIN sys.dm_db_missing_index_groups mig
+              ON mid.index_handle = mig.index_handle
+          INNER JOIN sys.dm_db_missing_index_group_stats migs
+              ON mig.index_group_handle = migs.group_handle
+          WHERE mid.database_id = DB_ID()
+          ORDER BY improvement_score DESC
+        metrics:
+          - key: custom.mssql.missing_index.improvement_score
+            value: col:improvement_score
+            type: gauge
+          - key: custom.mssql.missing_index.user_seeks
+            value: col:user_seeks
+            type: gauge
+          - key: custom.mssql.missing_index.avg_user_impact
+            value: col:avg_user_impact
+            type: gauge
+        dimensions:
+          - key: database_name
+            value: col:database_name
+          - key: table_name
+            value: col:table_name
+          - key: equality_columns
+            value: col:equality_columns
+          - key: inequality_columns
+            value: col:inequality_columns
+          - key: included_columns
+            value: col:included_columns
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Feature Set 10: Index Fragmentation — Layer 4 (Every 1 hour)
+  # Source: sys.dm_db_index_physical_stats (LIMITED mode)
+  # =========================================================================
+  - group: index_fragmentation
+    featureSet: index_fragmentation
+    interval:
+      minutes: 60
+    subgroups:
+      - subgroup: fragmentation_stats
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              DB_NAME(ips.database_id) AS database_name,
+              OBJECT_NAME(ips.object_id) AS table_name,
+              i.name AS index_name,
+              i.type_desc AS index_type,
+              ips.avg_fragmentation_in_percent,
+              ips.page_count
+          FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') ips
+          INNER JOIN sys.indexes i
+              ON ips.object_id = i.object_id AND ips.index_id = i.index_id
+          WHERE ips.page_count > 1000
+              AND ips.avg_fragmentation_in_percent > 10
+          ORDER BY ips.avg_fragmentation_in_percent DESC
+        metrics:
+          - key: custom.mssql.fragmentation.avg_percent
+            value: col:avg_fragmentation_in_percent
+            type: gauge
+          - key: custom.mssql.fragmentation.page_count
+            value: col:page_count
+            type: gauge
+        dimensions:
+          - key: database_name
+            value: col:database_name
+          - key: table_name
+            value: col:table_name
+          - key: index_name
+            value: col:index_name
+          - key: index_type
+            value: col:index_type
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Feature Set 11: Stale Statistics — Layer 4 (Every 1 hour)
+  # Source: sys.stats + sys.dm_db_stats_properties
+  # =========================================================================
+  - group: stale_statistics
+    featureSet: stale_statistics
+    interval:
+      minutes: 60
+    subgroups:
+      - subgroup: stale_stats
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              DB_NAME() AS database_name,
+              OBJECT_NAME(s.object_id) AS table_name,
+              s.name AS stats_name,
+              sp.last_updated AS stats_last_updated,
+              sp.rows AS total_rows,
+              sp.modification_counter,
+              CASE WHEN sp.rows > 0
+                   THEN (sp.modification_counter * 100.0 / sp.rows)
+                   ELSE 0 END AS modification_percent
+          FROM sys.stats s
+          CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
+          WHERE sp.modification_counter > 0
+              AND sp.rows > 1000
+          ORDER BY modification_percent DESC
+        metrics:
+          - key: custom.mssql.stats.modification_counter
+            value: col:modification_counter
+            type: gauge
+          - key: custom.mssql.stats.modification_percent
+            value: col:modification_percent
+            type: gauge
+          - key: custom.mssql.stats.total_rows
+            value: col:total_rows
+            type: gauge
+        dimensions:
+          - key: database_name
+            value: col:database_name
+          - key: table_name
+            value: col:table_name
+          - key: stats_name
+            value: col:stats_name
+          - key: stats_last_updated
+            value: col:stats_last_updated
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+  # =========================================================================
+  # Feature Set 12: Server Config Check — Layer 4 (Every 1 hour)
+  # Source: sys.configurations + sys.master_files
+  # =========================================================================
+  - group: server_config_check
+    featureSet: server_config_check
+    interval:
+      minutes: 60
+    subgroups:
+
+      # --- Key server configuration values ---
+      - subgroup: server_configs
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              name AS config_name,
+              CAST(value_in_use AS BIGINT) AS config_value
+          FROM sys.configurations
+          WHERE name IN (
+              'max degree of parallelism',
+              'cost threshold for parallelism',
+              'max server memory (MB)',
+              'min server memory (MB)',
+              'optimize for ad hoc workloads',
+              'blocked process threshold (s)',
+              'query governor cost limit'
+          )
+        metrics:
+          - key: custom.mssql.config.value
+            value: col:config_value
+            type: gauge
+        dimensions:
+          - key: config_name
+            value: col:config_name
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
+      # --- TempDB file configuration ---
+      - subgroup: tempdb_config
+        query: |
+          SELECT
+              @@SERVERNAME AS sql_server_instance,
+              COUNT(*) AS tempdb_file_count,
+              CASE WHEN COUNT(DISTINCT size) = 1 THEN 1 ELSE 0 END AS tempdb_files_equal
+          FROM sys.master_files
+          WHERE database_id = 2 AND type = 0
+        metrics:
+          - key: custom.mssql.config.tempdb_file_count
+            value: col:tempdb_file_count
+            type: gauge
+          - key: custom.mssql.config.tempdb_files_equal
+            value: col:tempdb_files_equal
+            type: gauge
+        dimensions:
+          - key: sql_server_instance
+            value: col:sql_server_instance
+
 # ---------------------------------------------------------------------------
 # Topology — Associate metrics with SQL Server instance entities
 # ---------------------------------------------------------------------------
@@ -461,7 +1283,7 @@ topology:
     - name: sql:sql_server_instance
       displayName: "SQL Server Instance"
       rules:
-        - idPattern: "mssql_latch_diagnostics_{sql_server_instance}"
+        - idPattern: "mssql_sp_diagnostics_{sql_server_instance}"
           sources:
             - sourceType: Metrics
               condition: "$prefix(custom.mssql)"
