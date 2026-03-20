@@ -214,7 +214,13 @@ Each feature set can be independently enabled or disabled. Start with the sets m
 
 ---
 
-## DDU Consumption Estimates
+## Consumption Estimates (DDU and DPS)
+
+Customers may be on either the **DDU (Davis Data Units)** licensing model or the newer **DPS (Dynatrace Platform Subscription)** model. The table below provides estimates for both.
+
+### DDU-Based Licensing
+
+Under DDU licensing, custom extension metrics are billed as **DDUs for custom metrics ingestion**. Each metric data point ingested counts toward DDU consumption.
 
 | Feature Set | Metrics/Poll | Dimensions | Est. DDU/Hour |
 |---|---|---|---|
@@ -235,7 +241,30 @@ Each feature set can be independently enabled or disabled. Start with the sets m
 | `server_config_check` | 1 × 7 + 2 (hourly) | 2 | ~0.01 |
 | **Total (all enabled)** | | | **~0.58/hr ≈ 14 DDU/day** |
 
-*Estimates assume a moderately active SQL Server with typical cardinality. Actual consumption varies based on the number of active latch classes, wait types, indexes, and blocking chains.*
+### DPS-Based Licensing
+
+Under DPS licensing, consumption is measured in **GiB of data ingested** across metrics, logs, and events. Custom extension metrics fall under the **Custom Metrics** capability.
+
+| Capability | What This Extension Consumes | Est. GiB/Day |
+|---|---|---|
+| **Custom Metrics** | All 15 feature sets (metric data points ingested) | ~0.02–0.05 GiB |
+| **Log & Event Ingest** | Workflow-generated log events (Layer 5 RCA comments) | Negligible |
+| **Davis CoPilot** | RCA analysis triggered per Davis Problem (Layer 5) | 1 CoPilot request per incident |
+| **Automation** | Workflow executions (DQL queries + CoPilot step) | ~12 DQL queries per incident |
+
+**DPS cost drivers to watch:**
+- **Metric cardinality:** Each unique combination of metric key + dimension values creates a time series. High-cardinality dimensions like `query_sql_text` increase the number of time series and therefore GiB consumption.
+- **Feature set selection:** Only enable what you need. The `proc_wait_breakdown` and `index_operational_stats` feature sets produce the most time series.
+- **Polling frequency:** 1-minute feature sets produce 6× more data than 5-minute ones. Layer 4 hourly sets have minimal impact.
+- **Number of monitored instances:** Multiply estimates by the number of SQL Server instances being monitored.
+
+**Reducing consumption on either model:**
+1. Disable feature sets you are not actively using
+2. Start with latch + wait analysis only, enable others on-demand during investigations
+3. For `proc_wait_breakdown`, reduce the `TOP N` limit in the SQL query if needed
+4. For `index_operational_stats`, the `TOP 50` limit already constrains output
+
+*Estimates assume a moderately active SQL Server with typical cardinality. Actual consumption varies based on the number of active latch classes, wait types, indexes, and blocking chains. Consult your Dynatrace account team for precise DPS capacity planning.*
 
 ---
 
@@ -263,9 +292,10 @@ Each feature set can be independently enabled or disabled. Start with the sets m
 - Verify session is running: `SELECT * FROM sys.dm_xe_sessions WHERE name = 'DT_SP_Diagnostics'`
 - Check blocked process threshold: `SELECT value_in_use FROM sys.configurations WHERE name = 'blocked process threshold (s)'` (must be > 0)
 
-### High DDU consumption
+### High DDU/DPS consumption
 - Disable feature sets you don't need
 - `index_operational_stats` and `proc_wait_breakdown` generate the most data — consider disabling if not actively investigating
+- See the **Consumption Estimates** section above for per-feature-set breakdown and optimization tips
 
 ---
 
@@ -277,7 +307,7 @@ Each feature set can be independently enabled or disabled. Start with the sets m
 
 3. **Cumulative DMV counters:** `sys.dm_os_latch_stats` and `sys.dm_os_wait_stats` return cumulative values since SQL Server startup. To see delta/rate, use the `rate` function in DQL or examine trends over time.
 
-4. **Dimension cardinality:** High-cardinality dimensions (like `query_sql_text`, `deadlock_graph`) may increase DDU consumption. The queries use `TOP N` limits to constrain result sets.
+4. **Dimension cardinality:** High-cardinality dimensions (like `query_sql_text`, `deadlock_graph`) may increase DDU/DPS consumption. The queries use `TOP N` limits to constrain result sets.
 
 5. **Deep Capture (Layer 3):** The `DT_SP_DeepCapture` XEvent session requires `ALTER ANY EVENT SESSION` permission to start/stop via Workflow. If this permission isn't granted, the session must be managed manually by a DBA.
 
