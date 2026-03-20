@@ -1,163 +1,288 @@
 {
-  "id": "sp-deep-diagnostics-rca-workflow",
-  "title": "SP Deep Diagnostics — Automated Root Cause Analysis",
-  "description": "Triggered by Davis Problems on database services. Gathers evidence from all monitoring layers and uses Davis CoPilot to produce a root cause narrative with actionable recommendations.",
+  "id": "wf_sp_deep_diagnostics_rca",
+  "title": "SP Deep Diagnostics — Automated RCA",
+  "description": "Instance-scoped workflow for SQL Server stored procedure root cause analysis. Triggered by Davis Problems on database services. Gathers evidence across all monitoring layers for a specific SQL Server instance and uses Davis CoPilot to produce an automated root cause narrative.",
+  "owner": "",
+  "ownerType": "USER",
+  "isPrivate": false,
+  "schemaVersion": 3,
+  "version": 2,
   "trigger": {
-    "type": "davis-problem",
-    "config": {
-      "categories": {
-        "slowdown": true,
-        "error": false,
-        "resource": true,
-        "availability": false,
-        "custom": true
-      },
-      "entityTags": {},
-      "entityTagsMatch": "all",
-      "onProblemClose": false,
-      "uniqueGenerationMode": "id"
+    "eventTrigger": {
+      "isActive": true,
+      "triggerConfiguration": {
+        "type": "davis-problem",
+        "value": {
+          "categories": {
+            "slowdown": true,
+            "error": false,
+            "resource": true,
+            "availability": false,
+            "custom": true
+          },
+          "entityTags": {},
+          "entityTagsMatch": "all",
+          "onProblemClose": false,
+          "uniqueGenerationMode": "id"
+        }
+      }
     }
   },
   "tasks": {
     "extract_problem_context": {
-      "name": "Extract Problem Context",
+      "name": "extract_problem_context",
+      "description": "Extract the affected entity, determine the SQL Server instance name, and define the analysis time window (problem start -5 min to +15 min).",
       "action": "dynatrace.automations:run-javascript",
-      "description": "Extract the affected entity, SP name, and define the analysis time window.",
+      "active": true,
       "input": {
-        "script": "export default async function({ execution_id }) {\n  const problem = await fetch(`/api/v2/problems/${event()['event.id']}`);\n  const problemJson = await problem.json();\n  const startTime = new Date(problemJson.startTime);\n  const from = new Date(startTime.getTime() - 5 * 60 * 1000).toISOString();\n  const to = new Date(startTime.getTime() + 15 * 60 * 1000).toISOString();\n  return {\n    problemId: problemJson.problemId,\n    displayId: problemJson.displayId,\n    title: problemJson.title,\n    entityId: problemJson.affectedEntities?.[0]?.entityId?.id || 'unknown',\n    entityName: problemJson.affectedEntities?.[0]?.name || 'unknown',\n    from: from,\n    to: to,\n    startTime: startTime.toISOString()\n  };\n}"
+        "script": "import { execution } from '@dynatrace-sdk/automation-utils';\n\nexport default async function ({ executionId }) {\n  const ex = await execution(executionId);\n  const event = ex.params.event;\n\n  // Fetch full problem details\n  const problemResp = await fetch('/api/v2/problems/' + event['event.id']);\n  const problem = await problemResp.json();\n\n  // Build analysis time window: problem start -5 min to +15 min\n  const startMs = problem.startTime;\n  const fromMs = startMs - 5 * 60 * 1000;\n  const toMs = startMs + 15 * 60 * 1000;\n  const from = new Date(fromMs).toISOString();\n  const to = new Date(toMs).toISOString();\n\n  // --- Determine the SQL Server instance name ---\n  // Strategy 1: Extract from the affected entity name (e.g., \"SQLSERVER01\\PROD\")\n  // Strategy 2: Fall back to the entity display name\n  let sqlInstance = 'unknown';\n  const affectedEntities = problem.affectedEntities || [];\n  const rootCauseEntity = problem.rootCauseEntity || {};\n\n  // Prefer root cause entity if it looks like a database\n  const primaryEntity = rootCauseEntity.entityId\n    ? rootCauseEntity\n    : affectedEntities[0] || {};\n\n  if (primaryEntity.name) {\n    sqlInstance = primaryEntity.name;\n  }\n\n  // If the entity is a service, try to find a related database entity\n  // by checking impacted entities for a CUSTOM_DEVICE or HOST type\n  for (const entity of affectedEntities) {\n    const name = entity.name || '';\n    // SQL Server instance names typically contain a backslash or look like hostnames\n    if (name.includes('\\\\') || name.toUpperCase().includes('SQL')) {\n      sqlInstance = name;\n      break;\n    }\n  }\n\n  return {\n    problemId: problem.problemId,\n    displayId: problem.displayId,\n    title: problem.title,\n    status: problem.status,\n    entityId: primaryEntity.entityId?.id || 'unknown',\n    entityName: primaryEntity.name || 'unknown',\n    sqlInstance: sqlInstance,\n    from: from,\n    to: to,\n    startTime: new Date(startMs).toISOString()\n  };\n}"
       },
       "position": { "x": 0, "y": 1 },
-      "predecessors": []
+      "predecessors": [],
+      "conditions": {
+        "states": {},
+        "custom": ""
+      },
+      "retry": {
+        "count": 1,
+        "delay": 5,
+        "failedLoopIterationsOnly": false
+      },
+      "timeout": 30
     },
 
     "gather_latch_metrics": {
-      "name": "Gather Latch Metrics (Layer 1)",
+      "name": "gather_latch_metrics",
+      "description": "Layer 1: Latch class wait time breakdown filtered to this SQL Server instance.",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query latch class metrics from the analysis time window.",
+      "active": true,
       "input": {
-        "query": "timeseries latch_wait = avg(custom.mssql.latch.wait_time_ms), by: { latch_class }, from: \"{{result('extract_problem_context').from}}\", to: \"{{result('extract_problem_context').to}}\" | sort arrayAvg(latch_wait) desc | limit 20"
+        "query": "timeseries latch_wait = avg(custom.mssql.latch.wait_time_ms), by: { latch_class, sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\" | sort arrayAvg(latch_wait) desc | limit 20"
       },
       "position": { "x": -2, "y": 2 },
-      "predecessors": ["extract_problem_context"]
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "gather_wait_metrics": {
-      "name": "Gather Wait Type Metrics (Layer 1)",
+      "name": "gather_wait_metrics",
+      "description": "Layer 1: OS wait type breakdown (latch, I/O, memory, CPU, lock waits) filtered to this instance.",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query wait type breakdown from the analysis time window.",
+      "active": true,
       "input": {
-        "query": "timeseries wait = avg(custom.mssql.wait.wait_time_ms), by: { wait_type }, from: \"{{result('extract_problem_context').from}}\", to: \"{{result('extract_problem_context').to}}\" | sort arrayAvg(wait) desc | limit 20"
+        "query": "timeseries wait = avg(custom.mssql.wait.wait_time_ms), by: { wait_type, sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\" | sort arrayAvg(wait) desc | limit 20"
       },
       "position": { "x": -1, "y": 2 },
-      "predecessors": ["extract_problem_context"]
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "gather_memory_grants": {
-      "name": "Gather Memory Grant Data (Layer 1)",
+      "name": "gather_memory_grants",
+      "description": "Layer 1: Memory grant pressure — waiting count, deficit (spill risk), max wait time.",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query memory grant pressure metrics.",
+      "active": true,
       "input": {
-        "query": "timeseries { deficit = avg(custom.mssql.memory.grant_deficit_kb), waiting = avg(custom.mssql.memory.grant_waiting_count), wait_time = avg(custom.mssql.memory.grant_wait_time_ms) }, from: \"{{result('extract_problem_context').from}}\", to: \"{{result('extract_problem_context').to}}\""
+        "query": "timeseries { deficit = avg(custom.mssql.memory.grant_deficit_kb), waiting = avg(custom.mssql.memory.grant_waiting_count), wait_time = avg(custom.mssql.memory.grant_wait_time_ms) }, by: { sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\""
       },
       "position": { "x": 0, "y": 2 },
-      "predecessors": ["extract_problem_context"]
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "gather_blocking_chains": {
-      "name": "Gather Blocking Chain Data (Layer 1)",
+      "name": "gather_blocking_chains",
+      "description": "Layer 1: Active blocking chains with blocker/blocked query text, SPIDs, and wait resources.",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query active blocking chains with query text.",
+      "active": true,
       "input": {
-        "query": "timeseries wait = max(custom.mssql.blocking.wait_time_ms), by: { blocked_spid, blocker_spid, wait_type, database_name, blocked_query, blocker_query }, from: \"{{result('extract_problem_context').from}}\", to: \"{{result('extract_problem_context').to}}\" | filter isNotNull(blocked_spid) | sort arrayMax(wait) desc"
+        "query": "timeseries wait = max(custom.mssql.blocking.wait_time_ms), by: { blocked_spid, blocker_spid, wait_type, database_name, blocked_query, blocker_query, sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\" | filter isNotNull(blocked_spid) | sort arrayMax(wait) desc"
       },
       "position": { "x": 1, "y": 2 },
-      "predecessors": ["extract_problem_context"]
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "gather_autogrowth": {
-      "name": "Gather Auto-Growth Events (Layer 1)",
+      "name": "gather_autogrowth",
+      "description": "Layer 1: Auto-growth events (data/log file grow/shrink) from default trace.",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query auto-growth events to correlate with latch spikes.",
+      "active": true,
       "input": {
-        "query": "timeseries growth = sum(custom.mssql.autogrowth.event_count), by: { event_name, database_name, file_name }, from: \"{{result('extract_problem_context').from}}\", to: \"{{result('extract_problem_context').to}}\" | filter arraySum(growth) > 0"
+        "query": "timeseries growth = sum(custom.mssql.autogrowth.event_count), by: { event_name, database_name, file_name, sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\" | filter arraySum(growth) > 0"
       },
       "position": { "x": 2, "y": 2 },
-      "predecessors": ["extract_problem_context"]
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
+    },
+
+    "gather_tempdb_usage": {
+      "name": "gather_tempdb_usage",
+      "description": "Layer 1: TempDB total and top-session usage for this instance.",
+      "action": "dynatrace.automations:execute-dql-query",
+      "active": true,
+      "input": {
+        "query": "timeseries { total = avg(custom.mssql.tempdb.total_usage_kb), top_session = avg(custom.mssql.tempdb.top_session_usage_kb) }, by: { sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\""
+      },
+      "position": { "x": 3, "y": 2 },
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "gather_proc_waits": {
-      "name": "Gather Proc Statement Waits (Layer 1)",
+      "name": "gather_proc_waits",
+      "description": "Layer 1: Per-statement wait breakdown inside stored procedures from Query Store.",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query per-statement wait breakdown inside stored procedures.",
+      "active": true,
       "input": {
-        "query": "timeseries total_wait = max(custom.mssql.proc_wait.total_wait_time_ms), by: { proc_name, query_sql_text, wait_category_desc }, from: \"{{result('extract_problem_context').from}}\", to: \"{{result('extract_problem_context').to}}\" | sort arrayMax(total_wait) desc | limit 20"
+        "query": "timeseries total_wait = max(custom.mssql.proc_wait.total_wait_time_ms), by: { proc_name, query_sql_text, wait_category_desc, sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\" | sort arrayMax(total_wait) desc | limit 20"
       },
       "position": { "x": -2, "y": 3 },
-      "predecessors": ["extract_problem_context"]
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "gather_plan_regression": {
-      "name": "Gather Plan Regression Data (Layer 1)",
+      "name": "gather_plan_regression",
+      "description": "Layer 1: Multi-plan queries with high variance ratio (parameter sniffing indicator).",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query plan regression detection — multi-plan queries with high variance.",
+      "active": true,
       "input": {
-        "query": "timeseries variance = max(custom.mssql.plan.variance_ratio), by: { proc_name, query_sql_text, query_id }, from: \"{{result('extract_problem_context').from}}\", to: \"{{result('extract_problem_context').to}}\" | sort arrayMax(variance) desc | limit 10"
+        "query": "timeseries { variance = max(custom.mssql.plan.variance_ratio), plans = max(custom.mssql.plan.plan_count), best = min(custom.mssql.plan.best_avg_duration), worst = max(custom.mssql.plan.worst_avg_duration) }, by: { proc_name, query_sql_text, query_id, sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\" | sort arrayMax(variance) desc | limit 10"
       },
       "position": { "x": -1, "y": 3 },
-      "predecessors": ["extract_problem_context"]
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "gather_io_latency": {
-      "name": "Gather File I/O Latency (Layer 1)",
+      "name": "gather_io_latency",
+      "description": "Layer 1: Per-file read/write I/O latency to identify storage bottlenecks.",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query per-file I/O latency to identify storage bottlenecks.",
+      "active": true,
       "input": {
-        "query": "timeseries { read_lat = avg(custom.mssql.io.read_latency_ms), write_lat = avg(custom.mssql.io.write_latency_ms) }, by: { database_name, file_name, file_type }, from: \"{{result('extract_problem_context').from}}\", to: \"{{result('extract_problem_context').to}}\" | sort arrayAvg(read_lat) desc"
+        "query": "timeseries { read_lat = avg(custom.mssql.io.read_latency_ms), write_lat = avg(custom.mssql.io.write_latency_ms) }, by: { database_name, file_name, file_type, sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\" | sort arrayAvg(read_lat) desc"
       },
       "position": { "x": 0, "y": 3 },
-      "predecessors": ["extract_problem_context"]
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "gather_index_ops": {
-      "name": "Gather Index Operational Stats (Layer 1)",
+      "name": "gather_index_ops",
+      "description": "Layer 1: Per-index page latch, IO latch, and lock contention metrics.",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query per-index lock/latch contention metrics.",
+      "active": true,
       "input": {
-        "query": "timeseries latch_wait = max(custom.mssql.index.page_latch_wait_ms), by: { database_name, table_name, index_name }, from: \"{{result('extract_problem_context').from}}\", to: \"{{result('extract_problem_context').to}}\" | sort arrayMax(latch_wait) desc | limit 10"
+        "query": "timeseries { pg_latch = max(custom.mssql.index.page_latch_wait_ms), pg_io = max(custom.mssql.index.page_io_latch_wait_ms), row_lock = max(custom.mssql.index.row_lock_wait_ms) }, by: { database_name, table_name, index_name, sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\" | sort arrayMax(pg_latch) desc | limit 10"
       },
       "position": { "x": 1, "y": 3 },
-      "predecessors": ["extract_problem_context"]
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
+    },
+
+    "gather_deadlocks": {
+      "name": "gather_deadlocks",
+      "description": "Layer 1: Deadlock events from system_health XE ring buffer.",
+      "action": "dynatrace.automations:execute-dql-query",
+      "active": true,
+      "input": {
+        "query": "timeseries deadlocks = sum(custom.mssql.deadlock.event_count), by: { deadlock_time, sql_server_instance }, from: \"{{ result('extract_problem_context').from }}\", to: \"{{ result('extract_problem_context').to }}\" | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\" | filter arraySum(deadlocks) > 0"
+      },
+      "position": { "x": 2, "y": 3 },
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "gather_health_check": {
-      "name": "Gather Health Check Data (Layer 4)",
+      "name": "gather_health_check",
+      "description": "Layer 4: Missing indexes, index fragmentation, and stale statistics (most recent hourly data).",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query most recent missing indexes, stale statistics, and server config.",
+      "active": true,
       "input": {
-        "query": "timeseries { missing_idx = max(custom.mssql.missing_index.improvement_score), frag = max(custom.mssql.fragmentation.avg_percent), stale = max(custom.mssql.stats.modification_percent) }, by: { table_name }, from: now() - 2h | sort arrayMax(missing_idx) desc | limit 15"
+        "query": "timeseries { missing_idx = max(custom.mssql.missing_index.improvement_score), frag = max(custom.mssql.fragmentation.avg_percent), stale = max(custom.mssql.stats.modification_percent) }, by: { table_name, sql_server_instance }, from: now() - 2h | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\" | sort arrayMax(missing_idx) desc | limit 15"
       },
-      "position": { "x": 2, "y": 3 },
-      "predecessors": ["extract_problem_context"]
+      "position": { "x": 3, "y": 3 },
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "gather_config_check": {
-      "name": "Gather Server Config (Layer 4)",
+      "name": "gather_config_check",
+      "description": "Layer 4: Server configuration values (MAXDOP, cost threshold, memory, TempDB files).",
       "action": "dynatrace.automations:execute-dql-query",
-      "description": "Query server configuration values for misconfiguration detection.",
+      "active": true,
       "input": {
-        "query": "timeseries config_val = avg(custom.mssql.config.value), by: { config_name }, from: now() - 2h"
+        "query": "timeseries config_val = avg(custom.mssql.config.value), by: { config_name, sql_server_instance }, from: now() - 2h | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\""
       },
-      "position": { "x": 3, "y": 3 },
-      "predecessors": ["extract_problem_context"]
+      "position": { "x": 4, "y": 3 },
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
+    },
+
+    "gather_tempdb_config": {
+      "name": "gather_tempdb_config",
+      "description": "Layer 4: TempDB file count and equal-size check.",
+      "action": "dynatrace.automations:execute-dql-query",
+      "active": true,
+      "input": {
+        "query": "timeseries { file_count = avg(custom.mssql.config.tempdb_file_count), files_equal = avg(custom.mssql.config.tempdb_files_equal) }, by: { sql_server_instance }, from: now() - 2h | filter sql_server_instance == \"{{ result('extract_problem_context').sqlInstance }}\""
+      },
+      "position": { "x": 5, "y": 3 },
+      "predecessors": ["extract_problem_context"],
+      "conditions": {
+        "states": { "extract_problem_context": "OK" },
+        "custom": ""
+      }
     },
 
     "copilot_rca": {
-      "name": "Davis CoPilot Root Cause Analysis",
+      "name": "copilot_rca",
+      "description": "Feed all gathered evidence to Davis CoPilot for automated root cause determination using the 8-check decision tree.",
       "action": "dynatrace.automations:davis-copilot",
-      "description": "Feed all gathered evidence to Davis CoPilot for automated root cause determination.",
+      "active": true,
       "input": {
-        "systemPrompt": "You are a Microsoft SQL Server performance expert working as a Dynatrace Davis CoPilot analyst. You have been given diagnostic evidence from multiple monitoring layers, all from the same time window surrounding a stored procedure performance degradation detected by Davis AI.\n\nYour task is to:\n1. Analyze the evidence and determine the root cause category\n2. Build a causal chain connecting the evidence\n3. Identify the specific trigger event\n4. Identify the specific statement/query most impacted\n5. Provide actionable recommendations to prevent recurrence\n\nUse the following decision tree:\n\nCHECK 1 - PARAMETER SNIFFING / PLAN REGRESSION\nIF plan_regression data shows plan_variance_ratio > 5 AND multiple plan_ids exist\n→ Root cause: Parameter sniffing or plan regression\n→ Recommendations: OPTION(RECOMPILE), OPTIMIZE FOR UNKNOWN, plan guides\n\nCHECK 2 - LATCH CONTENTION\nIF latch metrics show spike AND (auto-growth event OR FGCB_ADD_REMOVE spike OR BUFFER latch spike)\n→ Root cause: Latch contention caused by [specific trigger]\n→ Recommendations: Pre-size files, add TempDB files, partition hot tables\n\nCHECK 3 - LOCK BLOCKING\nIF blocking chain data shows active blocking AND proc_wait shows wait_category = 'Lock'\n→ Root cause: Lock blocking\n→ Recommendations: Index optimization, query tuning, isolation level review\n\nCHECK 4 - MEMORY PRESSURE / TEMPDB SPILLS\nIF memory_grants shows wait_time > 0 OR ideal >> granted AND spill warnings detected\n→ Root cause: Insufficient memory grant causing TempDB spills\n→ Recommendations: UPDATE STATISTICS, OPTION(MIN_GRANT_PERCENT), increase max server memory\n\nCHECK 5 - I/O BOTTLENECK\nIF file I/O latency shows avg_read > 20ms or avg_write > 5ms AND PAGEIOLATCH spikes\n→ Root cause: I/O bottleneck\n→ Recommendations: Rebuild indexes, review storage subsystem\n\nCHECK 6 - STALE STATISTICS\nIF stale_statistics shows modification_percent > 20% AND missing_column_statistics XEvents\n→ Root cause: Stale statistics causing bad cardinality estimates\n→ Recommendations: UPDATE STATISTICS with FULLSCAN\n\nCHECK 7 - CONFIGURATION ISSUES\nIF MAXDOP=0 with CXPACKET waits, or tempdb_file_count=1 with FGCB latches\n→ Root cause: Server misconfiguration\n→ Recommendations: Specific config changes with values\n\nCHECK 8 - RECOMPILATION OVERHEAD\nIF recompile events are frequent AND CPU is dominant wait\n→ Root cause: Excessive recompilation\n→ Recommendations: WITH RECOMPILE on specific statements, review temp table usage\n\nIMPORTANT RULES:\n- Multiple root causes can coexist. List in order of severity.\n- Always reference specific session IDs, query text, timestamps, and metric values.\n- If evidence is insufficient, say so explicitly.\n- Never guess without evidence.\n- Format recommendations as specific, actionable steps with SQL examples.\n- Start with a one-line summary, then provide detailed analysis.",
-        "userMessage": "Here is the diagnostic evidence for Davis Problem {{result('extract_problem_context').displayId}}:\nAffected Entity: {{result('extract_problem_context').entityName}}\nTime window: {{result('extract_problem_context').from}} to {{result('extract_problem_context').to}}\n\nLATCH METRICS:\n{{result('gather_latch_metrics')}}\n\nWAIT TYPE METRICS:\n{{result('gather_wait_metrics')}}\n\nMEMORY GRANTS:\n{{result('gather_memory_grants')}}\n\nBLOCKING CHAINS:\n{{result('gather_blocking_chains')}}\n\nAUTO-GROWTH EVENTS:\n{{result('gather_autogrowth')}}\n\nPROC STATEMENT WAITS:\n{{result('gather_proc_waits')}}\n\nPLAN REGRESSION:\n{{result('gather_plan_regression')}}\n\nFILE I/O LATENCY:\n{{result('gather_io_latency')}}\n\nINDEX OPERATIONAL STATS:\n{{result('gather_index_ops')}}\n\nHEALTH CHECK (Missing Indexes, Fragmentation, Stale Stats):\n{{result('gather_health_check')}}\n\nSERVER CONFIG:\n{{result('gather_config_check')}}\n\nDetermine the root cause and provide recommendations."
+        "systemPrompt": "You are a Microsoft SQL Server performance expert working as a Dynatrace Davis CoPilot analyst. You have been given diagnostic evidence from multiple monitoring layers, all from the same time window surrounding a stored procedure performance degradation detected by Davis AI.\n\nThe evidence is scoped to a SPECIFIC SQL Server instance: {{ result('extract_problem_context').sqlInstance }}\n\nYour task is to:\n1. Analyze the evidence and determine the root cause category\n2. Build a causal chain connecting the evidence\n3. Identify the specific trigger event\n4. Identify the specific statement/query most impacted\n5. Provide actionable recommendations to prevent recurrence\n\nUse the following decision tree:\n\nCHECK 1 - PARAMETER SNIFFING / PLAN REGRESSION\nIF plan_regression data shows plan_variance_ratio > 5 AND multiple plan_ids exist\n→ Root cause: Parameter sniffing or plan regression\n→ Recommendations: OPTION(RECOMPILE), OPTIMIZE FOR UNKNOWN, plan guides\n\nCHECK 2 - LATCH CONTENTION\nIF latch metrics show spike AND (auto-growth event OR FGCB_ADD_REMOVE spike OR BUFFER latch spike)\n→ Root cause: Latch contention caused by [specific trigger]\n→ Recommendations: Pre-size files, add TempDB files, partition hot tables\n\nCHECK 3 - LOCK BLOCKING\nIF blocking chain data shows active blocking AND proc_wait shows wait_category = 'Lock'\n→ Root cause: Lock blocking\n→ Recommendations: Index optimization, query tuning, isolation level review\n\nCHECK 4 - MEMORY PRESSURE / TEMPDB SPILLS\nIF memory_grants shows wait_time > 0 OR ideal >> granted AND TempDB usage is high\n→ Root cause: Insufficient memory grant causing TempDB spills\n→ Recommendations: UPDATE STATISTICS, OPTION(MIN_GRANT_PERCENT), increase max server memory\n\nCHECK 5 - I/O BOTTLENECK\nIF file I/O latency shows avg_read > 20ms or avg_write > 5ms AND PAGEIOLATCH spikes\n→ Root cause: I/O bottleneck\n→ Recommendations: Rebuild indexes, review storage subsystem\n\nCHECK 6 - STALE STATISTICS\nIF stale_statistics shows modification_percent > 20% AND high logical IO reads\n→ Root cause: Stale statistics causing bad cardinality estimates\n→ Recommendations: UPDATE STATISTICS with FULLSCAN\n\nCHECK 7 - CONFIGURATION ISSUES\nIF MAXDOP=0 with CXPACKET waits, or tempdb_file_count=1 with FGCB latches\n→ Root cause: Server misconfiguration\n→ Recommendations: Specific config changes with values\n\nCHECK 8 - RECOMPILATION OVERHEAD\nIF recompile events are frequent AND CPU is dominant wait\n→ Root cause: Excessive recompilation\n→ Recommendations: WITH RECOMPILE on specific statements, review temp table usage\n\nIMPORTANT RULES:\n- Multiple root causes can coexist. List in order of severity.\n- Always reference specific session IDs, query text, timestamps, and metric values from the evidence.\n- If evidence is insufficient to determine root cause, say so explicitly and recommend enabling additional monitoring.\n- Never guess without evidence. If a data source returned no results, say 'No [X] detected in this window.'\n- Format recommendations as specific, actionable steps with SQL examples where applicable.\n- Start with a one-line summary, then provide the detailed analysis.\n- Always include the SQL Server instance name in your analysis.",
+        "userMessage": "Here is the diagnostic evidence for Davis Problem {{ result('extract_problem_context').displayId }}:\n\nSQL Server Instance: {{ result('extract_problem_context').sqlInstance }}\nAffected Entity: {{ result('extract_problem_context').entityName }}\nProblem: {{ result('extract_problem_context').title }}\nTime window: {{ result('extract_problem_context').from }} to {{ result('extract_problem_context').to }}\n\n--- LAYER 1: ALWAYS-ON METRICS ---\n\nLATCH METRICS (by latch class):\n{{ result('gather_latch_metrics') }}\n\nWAIT TYPE METRICS (by wait type):\n{{ result('gather_wait_metrics') }}\n\nMEMORY GRANTS (deficit, waiting count, wait time):\n{{ result('gather_memory_grants') }}\n\nTEMPDB USAGE (total and top session):\n{{ result('gather_tempdb_usage') }}\n\nBLOCKING CHAINS (blocker/blocked SPIDs and queries):\n{{ result('gather_blocking_chains') }}\n\nAUTO-GROWTH EVENTS:\n{{ result('gather_autogrowth') }}\n\nDEADLOCK EVENTS:\n{{ result('gather_deadlocks') }}\n\nPROC STATEMENT WAITS (per-statement inside SPs):\n{{ result('gather_proc_waits') }}\n\nPLAN REGRESSION (multi-plan queries with variance ratio):\n{{ result('gather_plan_regression') }}\n\nFILE I/O LATENCY (per-file read/write latency):\n{{ result('gather_io_latency') }}\n\nINDEX OPERATIONAL STATS (per-index latch/lock contention):\n{{ result('gather_index_ops') }}\n\n--- LAYER 4: HEALTH CHECK DATA ---\n\nMISSING INDEXES, FRAGMENTATION, STALE STATISTICS:\n{{ result('gather_health_check') }}\n\nSERVER CONFIGURATION:\n{{ result('gather_config_check') }}\n\nTEMPDB FILE CONFIGURATION:\n{{ result('gather_tempdb_config') }}\n\nDetermine the root cause and provide recommendations."
       },
       "position": { "x": 0, "y": 4 },
       "predecessors": [
@@ -166,33 +291,69 @@
         "gather_memory_grants",
         "gather_blocking_chains",
         "gather_autogrowth",
+        "gather_tempdb_usage",
         "gather_proc_waits",
         "gather_plan_regression",
         "gather_io_latency",
         "gather_index_ops",
+        "gather_deadlocks",
         "gather_health_check",
-        "gather_config_check"
-      ]
+        "gather_config_check",
+        "gather_tempdb_config"
+      ],
+      "conditions": {
+        "states": {
+          "gather_latch_metrics": "OK",
+          "gather_wait_metrics": "OK",
+          "gather_memory_grants": "OK",
+          "gather_blocking_chains": "OK",
+          "gather_autogrowth": "OK",
+          "gather_tempdb_usage": "OK",
+          "gather_proc_waits": "OK",
+          "gather_plan_regression": "OK",
+          "gather_io_latency": "OK",
+          "gather_index_ops": "OK",
+          "gather_deadlocks": "OK",
+          "gather_health_check": "OK",
+          "gather_config_check": "OK",
+          "gather_tempdb_config": "OK"
+        },
+        "custom": "",
+        "else": "SKIP"
+      },
+      "retry": {
+        "count": 1,
+        "delay": 10,
+        "failedLoopIterationsOnly": false
+      },
+      "timeout": 120
     },
 
     "post_rca_comment": {
-      "name": "Post RCA to Problem Card",
+      "name": "post_rca_comment",
+      "description": "Post the CoPilot root cause analysis as a comment on the Davis Problem card.",
       "action": "dynatrace.automations:http-function",
-      "description": "Post the CoPilot root cause analysis as a comment on the Davis Problem.",
+      "active": true,
       "input": {
-        "url": "/api/v2/problems/{{result('extract_problem_context').problemId}}/comments",
+        "url": "/api/v2/problems/{{ result('extract_problem_context').problemId }}/comments",
         "method": "POST",
         "headers": {
           "Content-Type": "application/json"
         },
-        "body": {
-          "message": "## SP Deep Diagnostics — Automated Root Cause Analysis\n\n{{result('copilot_rca').response}}",
-          "context": "Davis CoPilot - SP Deep Diagnostics"
-        }
+        "body": "{\n  \"message\": \"## SP Deep Diagnostics — Automated Root Cause Analysis\\n\\n**Instance:** {{ result('extract_problem_context').sqlInstance }}\\n**Time window:** {{ result('extract_problem_context').from }} to {{ result('extract_problem_context').to }}\\n\\n{{ result('copilot_rca').response }}\",\n  \"context\": \"Davis CoPilot - SP Deep Diagnostics v2.0\"\n}"
       },
       "position": { "x": 0, "y": 5 },
-      "predecessors": ["copilot_rca"]
+      "predecessors": ["copilot_rca"],
+      "conditions": {
+        "states": { "copilot_rca": "OK" },
+        "custom": ""
+      },
+      "retry": {
+        "count": 2,
+        "delay": 5,
+        "failedLoopIterationsOnly": false
+      },
+      "timeout": 30
     }
-  },
-  "schemaVersion": 3
+  }
 }
